@@ -1,0 +1,6 @@
+devices:
+  router1:
+    type: openwrt-router
+    host: 192.168.1.1
+    ssh_user: root
+    config_file: router1.yaml

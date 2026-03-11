@@ -1,0 +1,19 @@
+config dnsmasq
+
+{% for pool_name, pool in dhcp.items() | sort %}
+config dhcp '{{ pool_name }}'
+    option interface '{{ pool_name }}'
+{% if pool.start is defined %}
+    option start '{{ pool.start }}'
+{% endif %}
+{% if pool.limit is defined %}
+    option limit '{{ pool.limit }}'
+{% endif %}
+{% if pool.leasetime is defined %}
+    option leasetime '{{ pool.leasetime }}'
+{% endif %}
+{% if pool.ignore is defined %}
+    option ignore '{{ pool.ignore }}'
+{% endif %}
+
+{% endfor %}

@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OpenWrt Router Configuration",
+  "type": "object",
+  "required": ["hostname", "system", "network"],
+  "properties": {
+    "hostname": {
+      "type": "string",
+      "description": "Device hostname"
+    },
+    "system": {
+      "type": "object",
+      "required": ["hostname", "timezone"],
+      "properties": {
+        "hostname": { "type": "string" },
+        "timezone": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "network": {
+      "type": "object",
+      "description": "Network interface definitions",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["proto"],
+        "properties": {
+          "type": { "type": "string" },
+          "device": { "type": "string" },
+          "proto": {
+            "type": "string",
+            "enum": ["static", "dhcp", "dhcpv6", "pppoe", "none"]
+          },
+          "ipaddr": { "type": "string" },
+          "netmask": { "type": "string" },
+          "gateway": { "type": "string" },
+          "dns": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "wireless": {
+      "type": "object",
+      "required": ["radios", "interfaces"],
+      "properties": {
+        "radios": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": { "type": "string" },
+              "channel": { "type": "integer" },
+              "country": { "type": "string" },
+              "band": { "type": "string" },
+              "htmode": { "type": "string" }
+            }
+          }
+        },
+        "interfaces": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["device", "mode", "ssid"],
+            "properties": {
+              "device": { "type": "string" },
+              "mode": {
+                "type": "string",
+                "enum": ["ap", "sta", "monitor", "adhoc"]
+              },
+              "ssid": { "type": "string" },
+              "encryption": { "type": "string" },
+              "key": { "type": "string" },
+              "disabled": { "type": "integer", "enum": [0, 1] }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "dhcp": {
+      "type": "object",
+      "description": "DHCP server configuration per interface",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "start": { "type": "integer", "minimum": 1 },
+          "limit": { "type": "integer", "minimum": 1 },
+          "leasetime": { "type": "string" },
+          "ignore": { "type": "integer", "enum": [0, 1] }
+        }
+      }
+    },
+    "firewall": {
+      "type": "object",
+      "properties": {
+        "defaults": {
+          "type": "object",
+          "properties": {
+            "input": { "type": "string", "enum": ["ACCEPT", "DROP", "REJECT"] },
+            "output": { "type": "string", "enum": ["ACCEPT", "DROP", "REJECT"] },
+            "forward": { "type": "string", "enum": ["ACCEPT", "DROP", "REJECT"] },
+            "synflood_protect": { "type": "integer", "enum": [0, 1] }
+          }
+        },
+        "zones": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "input", "output", "forward"],
+            "properties": {
+              "name": { "type": "string" },
+              "input": { "type": "string" },
+              "output": { "type": "string" },
+              "forward": { "type": "string" },
+              "masq": { "type": "integer", "enum": [0, 1] },
+              "mtu_fix": { "type": "integer", "enum": [0, 1] },
+              "network": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "forwardings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["src", "dest"],
+            "properties": {
+              "src": { "type": "string" },
+              "dest": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
