@@ -1,19 +1,9 @@
 # homelab-gitops-network
 
-A **GitOps-style homelab network configuration system** for OpenWrt routers.
+A **GitOps-style homelab network configuration system** for OpenWrt routers, combining both network operations tooling and network design documentation in a single repository.
 
 Network config lives in YAML, gets validated, rendered into OpenWrt UCI config files, and deployed safely via SSH with automatic backup and rollback support.
-
----
-
-## Documentation
-
-Full homelab documentation lives in the companion repository [homelab-docs](https://github.com/Bigalan09/homelab-docs), included here as a git submodule at `docs/`.
-
-```bash
-# after cloning, initialise the submodule
-git submodule update --init --recursive
-```
+Network design documentation is generated from the YAML data files under `data/network/` and the Jinja2 templates under `templates/network/`.
 
 ---
 
@@ -22,24 +12,32 @@ git submodule update --init --recursive
 ```
 Git Repository
       │
-      ▼
-YAML network definition   (devices/<device-name>.yaml)
+      ├─── Network Design Data (data/network/*.yaml)
+      │         │
+      │         ▼
+      │    Doc generator (scripts/generate-docs.py)
+      │         │  • loads all YAML data files
+      │         │  • renders Jinja2 doc templates
+      │         ▼
+      │    Generated docs (docs/network/*.md)
       │
-      ▼
-Python generator          (generator/generate.py)
-      │  • loads inventory
-      │  • validates YAML against JSON Schema
-      │  • renders Jinja2 templates
-      ▼
-Rendered OpenWrt configs  (build/<device-name>/network, wireless, dhcp, ...)
-      │
-      ▼
-SSH deploy script         (scripts/deploy.sh)
-      │  • backs up /etc/config
-      │  • installs new configs
-      │  • reloads services
-      ▼
-OpenWrt Router
+      └─── OpenWrt Device Configs (devices/<device>.yaml)
+                │
+                ▼
+         Python generator (generator/generate.py)
+                │  • loads inventory
+                │  • validates YAML against JSON Schema
+                │  • renders Jinja2 templates
+                ▼
+         Rendered OpenWrt configs (build/<device>/network, wireless, dhcp, ...)
+                │
+                ▼
+         SSH deploy script (scripts/deploy.sh)
+                │  • backs up /etc/config
+                │  • installs new configs
+                │  • reloads services
+                ▼
+         OpenWrt Router
 ```
 
 ---
@@ -54,17 +52,44 @@ homelab-gitops-network/
 ├── requirements.txt        ← Python dependencies
 ├── Makefile                ← developer workflow shortcuts
 │
+├── data/
+│   └── network/            ← network design data (single source of truth)
+│       ├── devices.yaml    ← infrastructure devices and external zones
+│       ├── dns.yaml        ← DNS zones and records
+│       ├── ports.yaml      ← service port assignments
+│       ├── services.yaml   ← homelab services
+│       ├── site.yaml       ← site-level metadata
+│       ├── tailnet.yaml    ← Tailscale / tailnet configuration
+│       ├── wireless.yaml   ← wireless SSIDs and radio config
+│       └── zones.yaml      ← VLAN zones
+│
+├── docs/
+│   └── network/            ← generated documentation (do not edit directly)
+│       ├── README.md
+│       ├── architecture.md
+│       ├── dns-and-tailnet.md
+│       ├── operations.md
+│       ├── physical-topology.md
+│       └── policy-and-exposure.md
+│
 ├── inventory/
 │   └── devices.yaml        ← device inventory (hosts, types, SSH users)
 │
 ├── devices/
-│   └── flint2.yaml         ← per-device YAML configuration (single source of truth)
+│   └── flint2.yaml         ← per-device OpenWrt YAML configuration
 │
 ├── schemas/
 │   └── router.schema.json  ← JSON Schema for router YAML validation
 │
 ├── templates/
-│   └── openwrt/
+│   ├── network/            ← Jinja2 templates for documentation
+│   │   ├── README.md.j2
+│   │   ├── architecture.md.j2
+│   │   ├── dns-and-tailnet.md.j2
+│   │   ├── operations.md.j2
+│   │   ├── physical-topology.md.j2
+│   │   └── policy-and-exposure.md.j2
+│   └── openwrt/            ← Jinja2 templates for OpenWrt UCI configs
 │       ├── network.j2      ← /etc/config/network
 │       ├── wireless.j2     ← /etc/config/wireless
 │       ├── dhcp.j2         ← /etc/config/dhcp
@@ -79,12 +104,12 @@ homelab-gitops-network/
 ├── scripts/
 │   ├── deploy.sh           ← generate + backup + deploy + reload
 │   ├── backup.sh           ← download /etc/config locally
-│   └── rollback.sh         ← restore last router backup
+│   ├── rollback.sh         ← restore last router backup
+│   ├── generate-docs.py    ← regenerate docs/network/ from data/network/
+│   └── generate-readme.py  ← compile docs/ into a single README
 │
 ├── build/                  ← generated configs (git-ignored)
 ├── backups/                ← local backups (git-ignored)
-│
-├── docs/                   ← homelab-docs submodule (https://github.com/Bigalan09/homelab-docs)
 │
 ├── tests/
 │   └── test_rendering.py   ← pytest test suite
@@ -173,7 +198,13 @@ to run `generate <device-name>` first.
 
 ## GitOps Workflow
 
-1. **Edit** `devices/<device-name>.yaml` to change your network configuration.
+### Network design changes
+1. **Edit** `data/network/*.yaml` to update your network design.
+2. **Regenerate docs**: `make docs`
+3. **Commit everything** (`data/`, `docs/network/`) together — data and docs stay in sync.
+
+### OpenWrt device config changes
+1. **Edit** `devices/<device-name>.yaml` to change your router configuration.
 2. **Commit and push** to the repository.
 3. **CI** automatically validates the YAML and renders configs.
 4. **Deploy** manually (or automate via CD):
@@ -200,6 +231,9 @@ make generate DEVICE=flint2
 
 # Generate configs for all devices
 make generate-all
+
+# Regenerate docs/network/ from data/network/ and templates/network/
+make docs
 
 # Run the test suite
 make test

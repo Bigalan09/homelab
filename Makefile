@@ -1,4 +1,4 @@
-.PHONY: setup list validate generate generate-all status deploy backup rollback test clean help
+.PHONY: setup list validate generate generate-all status deploy backup rollback test clean docs docs-readme help
 
 DEVICE ?= flint2
 VENV   := .venv
@@ -50,6 +50,14 @@ test:
 ## clean: remove generated build artifacts
 clean:
 	rm -rf build/
+
+## docs: regenerate docs/network/ from data/network/ and templates/network/
+docs:
+	$(PYTHON) scripts/generate-docs.py
+
+## docs-readme: compile docs/ into README.md (pass OUTPUT=path to override)
+docs-readme:
+	$(PYTHON) scripts/generate-readme.py $(if $(OUTPUT),--output $(OUTPUT),)
 
 ## help: show this help
 help:

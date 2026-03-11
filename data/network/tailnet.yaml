@@ -1,0 +1,128 @@
+tailnet:
+  policy_model: grants
+  magicdns: true
+  dns_mode: split_dns
+  split_dns_suffixes: [home.arpa, tail.bigalan.dev]
+  advertised_routes: [10.10.99.0/24, 10.10.10.0/24]
+  private_naming:
+    split_dns_suffixes: [home.arpa, tail.bigalan.dev]
+    private_app_suffix: tail.bigalan.dev
+    tailnet_native_namespace: ts.net
+    edge_nodes_use_magicdns: true
+    notes:
+      - Use MagicDNS for devices that join the tailnet directly.
+      - Use split DNS for homelab service names under home.arpa and tail.bigalan.dev.
+      - Use tail.bigalan.dev for private app names on your own domain.
+      - Do not treat bigalan.dev as a private tailnet namespace.
+  identities:
+    - id: "group:homelab-admins"
+      type: group
+      purpose: Full remote administration of management and server subnets
+    - id: "group:homelab-app-users"
+      type: group
+      purpose: Access selected remote HTTPS apps only
+    - id: "group:homelab-storage-users"
+      type: group
+      purpose: Access NAS administration and remote storage over the tailnet
+    - id: "tag:edge-proxy"
+      type: tag
+      purpose: Edge reverse proxy identity for published bigalan.dev apps
+  tag_owners:
+    "tag:edge-proxy":
+      - "autogroup:admin"
+  ssh:
+    enabled: true
+    provider: tailscale_ssh
+    target_classes: [edge_linux_servers, homelab_linux_servers]
+    admin_identity: "group:homelab-admins"
+    high_risk_users:
+      action: check
+      users: [root]
+    public_ssh_policy:
+      default: closed
+      exceptions_require_documentation: true
+    key_policy:
+      break_glass_keys_retained: true
+      deploy_keys_retained: true
+      service_account_keys_retained: true
+    notes:
+      - Tailscale SSH is the admin path for approved Linux nodes.
+      - Keep OpenSSH keys for bootstrap, break-glass access, and non-interactive service use.
+  subnet_router:
+    host: server-tailnet-01.home.arpa
+    zone: server
+    address: 10.10.10.27
+    role: dedicated_subnet_router
+    exit_node: false
+    rationale:
+      - Keep Tailnet routing separate from the gateway firewall and TV VLAN VPN path.
+      - Avoid the Tailscale and VPN client role collision documented by GL.iNet.
+  approved_apps:
+    - service: adguard-admin
+      fqdn: adguard.home.arpa
+      address: 10.10.10.53
+      ports: [tcp/443]
+      allowed_identities: ["group:homelab-admins"]
+    - service: home-assistant
+      fqdn: ha.home.arpa
+      address: 10.10.10.20
+      private_fqdn: ha.tail.bigalan.dev
+      ports: [tcp/8123]
+      allowed_identities: ["group:homelab-app-users", "tag:edge-proxy"]
+    - service: reverse-proxy
+      fqdn: proxy.home.arpa
+      address: 10.10.10.21
+      private_fqdn: media.tail.bigalan.dev
+      ports: [tcp/443]
+      allowed_identities: ["group:homelab-app-users", "tag:edge-proxy"]
+    - service: nas-admin
+      fqdn: nas.home.arpa
+      address: 10.10.10.22
+      private_fqdn: nas.tail.bigalan.dev
+      ports: [tcp/443]
+      allowed_identities: ["group:homelab-storage-users"]
+  storage_access:
+    host: server-nas-01.home.arpa
+    address: 10.10.10.22
+    protocols: [tcp/443, tcp/445]
+    allowed_identities: ["group:homelab-storage-users"]
+    nfs_exposed: false
+    taildrive_enabled: false
+    notes:
+      - SMB over the tailnet is the remote storage path.
+      - Taildrive is disabled.
+  edge_publishing:
+    public_domain: bigalan.dev
+    edge_node: edge-proxy-01.bigalan.dev
+    transport: tailscale
+    public_tls_terminates_at_edge: true
+    notes:
+      - Tailscale secures the edge-to-home backhaul only.
+      - bigalan.dev uses its own authentication layer at the edge for private apps.
+      - Do not publish raw NAS file protocols on the public domain.
+      - Private tailnet-only names use tail.bigalan.dev instead of public bigalan.dev hostnames.
+    published_apps:
+      - public_name: ha.bigalan.dev
+        upstream: server-ha-01.home.arpa:8123
+        auth_required: true
+      - public_name: media.bigalan.dev
+        upstream: server-proxy-01.home.arpa:443
+        auth_required: true
+  private_services:
+    use_tailscale_services: false
+    notes:
+      - Private app names use tail.bigalan.dev.
+      - ts.net names remain available for raw device identity and administration.
+  funnel:
+    enabled: false
+    notes:
+      - Funnel is disabled.
+      - bigalan.dev and tail.bigalan.dev cover the public and private naming model.
+  access_principles:
+    - Tailnet is not a general-purpose path into the home network.
+    - Remote admins reach the management and server subnets.
+    - Remote app users reach approved apps only.
+    - Remote storage users reach the NAS over HTTPS and SMB only.
+    - The edge proxy reaches only the app backends it publishes.
+    - Public bigalan.dev records do not point at tailnet IPs.
+    - Guest, TV, work, LAN, and arbitrary IoT clients are not exported by subnet routes.

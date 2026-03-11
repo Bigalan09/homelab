@@ -1,0 +1,93 @@
+ports:
+  mgmt-router-01:
+    - physical: 2.5g-wan
+      peer: isp-handoff
+      mode: wan
+      notes: Primary internet uplink
+    - physical: 2.5g-wan-lan
+      peer: mgmt-switch-01:ether1
+      mode: trunk
+      allowed_vlans: [10, 20, 30, 40, 50, 60, 99]
+      notes: Single internal uplink
+  mgmt-switch-01:
+    - physical: ether1
+      peer: mgmt-router-01:2.5g-wan-lan
+      mode: trunk
+      allowed_vlans: [10, 20, 30, 40, 50, 60, 99]
+      notes: Router uplink
+    - physical: ether2
+      peer: mgmt-ap-01:wan
+      mode: trunk
+      allowed_vlans: [20, 40, 50, 60, 99]
+      notes: Office AP uplink
+    - physical: ether3
+      peer: mgmt-thread-01:uplink
+      mode: hybrid
+      native_vlan: 99
+      allowed_vlans: [30]
+      notes: Management on VLAN 99, IoT client traffic on VLAN 30
+    - physical: ether4
+      peer: garage-switch-01:uplink
+      mode: access
+      access_vlan: 10
+      notes: Garage downstream switch for server gear only
+    - physical: ether5
+      peer: office-switch-01:uplink
+      mode: access
+      access_vlan: 20
+      notes: Office downstream switch for trusted clients only
+    - physical: ether6
+      peer: unassigned
+      mode: access
+      access_vlan: null
+      notes: Spare for staging or bench access
+    - physical: ether7
+      peer: unassigned
+      mode: access
+      access_vlan: null
+      notes: Spare for staging or bench access
+    - physical: ether8
+      peer: unassigned
+      mode: access
+      access_vlan: null
+      notes: Spare for staging or bench access
+    - physical: sfp-sfpplus1
+      peer: server-nas-01
+      mode: access
+      access_vlan: 10
+      notes: NAS 10G uplink
+    - physical: sfp-sfpplus2
+      peer: lan-desktop-01
+      mode: access
+      access_vlan: 20
+      notes: Gaming desktop 10G uplink
+  mgmt-ap-01:
+    - physical: wan
+      peer: mgmt-switch-01:ether2
+      mode: trunk
+      allowed_vlans: [20, 40, 50, 60, 99]
+      notes: Tagged uplink
+    - physical: lan
+      peer: local-client-or-unused
+      mode: access
+      access_vlan: 20
+      notes: Do not treat as a trunk handoff
+  mgmt-thread-01:
+    - physical: uplink
+      peer: mgmt-switch-01:ether3
+      mode: hybrid
+      native_vlan: 99
+      allowed_vlans: [30]
+      notes: Validate management and IoT client separation on GL.iNet firmware
+  garage-switch-01:
+    - physical: uplink
+      peer: mgmt-switch-01:ether4
+      mode: access
+      access_vlan: 10
+      notes: Unmanaged switch; single VLAN only
+  office-switch-01:
+    - physical: uplink
+      peer: mgmt-switch-01:ether5
+      mode: access
+      access_vlan: 20
+      notes: Unmanaged switch; single VLAN only

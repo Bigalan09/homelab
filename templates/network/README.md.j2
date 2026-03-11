@@ -1,0 +1,43 @@
+{# templates/network/README.md.j2 #}
+# Meerkat Manor Network
+
+This folder holds the target network design for Meerkat Manor.
+
+The YAML files under `data/network/` are the source of truth. If a prose document disagrees with the data, the YAML is wrong or the prose is stale. Fix one of them. Do not keep both.
+
+## Document Map
+
+- [Architecture](./architecture.md): zones, trust model, addressing, naming, and service ownership.
+- [Physical topology](./physical-topology.md): hardware placement, trunks, access ports, and unmanaged switch limits.
+- [DNS and Tailnet](./dns-and-tailnet.md): `{{ dns.zone }}`, `{{ dns.private_tailnet_domain.zone }}`, AdGuard Home, split DNS, MagicDNS, Tailscale SSH, remote NAS access, and Tailscale remote access.
+- [Policy and exposure](./policy-and-exposure.md): inter-VLAN rules, service exposure, the TV VLAN VPN path, and `{{ tailnet.edge_publishing.public_domain }}` publishing through the edge zone.
+- [Operations](./operations.md): rollout order, validation, monitoring, backups, and recovery.
+
+## Quick View
+
+| Zone | VLAN | Subnet | Purpose |
+| ---- | ---- | ---- | ---- |
+{% for zone in zones -%}
+| {{ zone.id }} | {{ zone.vlan }} | {{ zone.cidr }} | {{ zone.purpose }} |
+{% endfor %}
+## Hard Decisions
+
+- Inter-VLAN traffic is default deny.
+- `{{ dns.zone }}` is the internal DNS suffix.
+- AdGuard Home in `VLAN {{ (zones | selectattr('id', 'equalto', 'server') | first).vlan }}` is the primary internal resolver.
+- Tailscale uses `{{ tailnet.policy_model }}`, not new ACL work.
+- Linux edge and server nodes use Tailscale SSH for admin access. Public SSH stays closed.
+- Remote NAS storage is allowed over the tailnet for approved users. `SMB` is the remote file protocol. `NFS` stays internal.
+- The Tailscale subnet router lives on a dedicated server-side node, not on the Flint 2.
+- Edge servers join the tailnet. Private naming there uses MagicDNS and the private `{{ dns.private_tailnet_domain.zone }}` zone, while `{{ dns.zone }}` stays the split-DNS namespace for homelab services.
+- `{{ tailnet.edge_publishing.public_domain }}` terminates on an edge reverse proxy that joins the tailnet. Public app exposure uses Tailscale as the backhaul, not as the browser-facing DNS or certificate layer.
+- Tailnet-only apps use `*.{{ dns.private_tailnet_domain.zone }}` instead of `*.ts.net` names. That is private network gating by Tailscale grants, not a substitute for app auth on sensitive services.
+- Tailscale Funnel is out of scope for this design.
+- The GL-S200 stays on GL.iNet firmware. Its management plane is on `VLAN 99`. Its IoT SSID bridges into `VLAN 30`.
+
+## Platform Baseline
+
+{% for device in infrastructure.devices if device.get('sku') -%}
+- {{ device.model }} (`{{ device.sku }}`): {{ device.description }}.
+{% endfor %}
+- GL.iNet GL-S200: {{ (infrastructure.devices | selectattr('id', 'equalto', 'mgmt-thread-01') | first).description }}.

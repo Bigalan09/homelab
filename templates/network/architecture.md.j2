@@ -1,0 +1,86 @@
+{# templates/network/architecture.md.j2 #}
+# Architecture
+
+This document explains the network shape. It does not replace the data in `data/network/`.
+
+## Purpose
+
+The design separates infrastructure, servers, personal devices, IoT, guests, work devices, and TV endpoints into distinct VLANs. Internal traffic is denied by default and opened only for named services. Public HTTP entrypoints live in the `edge` zone and reach home services over Tailscale instead of direct inbound routing. Edge servers themselves join the tailnet for private administration.
+
+## Design Rules
+
+- Separate device classes by trust level.
+- Keep infrastructure management on its own segment.
+- Prefer wired links for core infrastructure and servers.
+- Default deny between zones.
+- Publish services by exception, not by subnet trust.
+- Keep addressing and naming predictable.
+- Preserve a wired and wireless recovery path.
+
+## Zone Model
+
+| Zone | VLAN | Subnet | Trust | Internet | Notes |
+| ---- | ---- | ---- | ---- | ---- | ---- |
+{% for zone in zones -%}
+| {{ zone.id }} | {{ zone.vlan }} | {{ zone.cidr }} | {{ zone.trust }} | {{ zone.internet_access | replace('_', ' ') }} | {{ zone.purpose }} |
+{% endfor %}
+`edge` is not a local VLAN. It is an external trust zone for VPS, relays, and hosted ingress points. In this design it also owns the `{{ (external_zones | first).public_domain }}` public domain and terminates selected application ingress before proxying over Tailscale to homelab services.
+
+## Trust Model
+
+- `management` is the only zone that administers infrastructure directly.
+- `server` hosts shared services. It is not broadly trusted.
+- `lan` can reach approved services and selected IoT control paths.
+- `iot` reaches core services and named controllers. It does not laterally browse the network.
+- `guest` is internet only.
+- `tv` is deliberately narrow: local media services, core DNS and NTP, then VPN egress.
+- `work` stays separate from personal and IoT networks.
+
+## Addressing Policy
+
+- `.1` in each subnet is the default gateway.
+- `.2` to `.19` are reserved for infrastructure.
+- `.20` to `.49` are reserved for fixed services and static leases.
+- DHCP serves clients and low-risk fixed endpoints.
+- Critical infrastructure uses static addresses or fixed leases recorded in the YAML.
+
+## Naming
+
+The internal DNS suffix is `{{ dns.zone }}`.
+
+The namespace is flat. Use full names such as `mgmt-router-01.{{ dns.zone }}` and short service aliases such as `ha.{{ dns.zone }}` where they help.
+
+Naming rules:
+
+- Lowercase only.
+- Hyphen-separated fields.
+- Two-digit instances.
+- Zone names match the VLAN definitions.
+- Service aliases stay short and stable.
+
+## Service Ownership
+
+| Function | Owner | Notes |
+| ---- | ---- | ---- |
+| Routing | Flint 2 | Default gateway for all local VLANs |
+| Inter-VLAN firewalling | Flint 2 | Primary policy enforcement point |
+| DHCP | Flint 2 | Central DHCP |
+| Internal DNS | AdGuard Home in server VLAN | Authoritative for `{{ dns.zone }}` and the private `{{ dns.private_tailnet_domain.zone }}` zone used over the tailnet |
+| NTP | Flint 2 | Simple and central; allow from required zones |
+| TV VLAN VPN egress | Flint 2 | Separate from Tailnet routing |
+| Main office Wi-Fi | Beryl AX | Tagged SSIDs for `99`, `20`, `40`, `50`, and `60` |
+| IoT Wi-Fi and Thread | GL-S200 | Management on `99`, IoT SSID on `30` |
+| Tailnet subnet router | Dedicated server node | Advertises `management` and `server` only |
+| SSH administration | Tailscale SSH on Linux edge and server nodes | Public SSH stays closed |
+| Tailnet private naming | MagicDNS and split DNS | `{{ dns.zone }}` and `{{ dns.private_tailnet_domain.zone }}` cover private homelab and tailnet-only names |
+| Remote NAS storage | NAS over Tailscale | `SMB` and HTTPS for approved remote users |
+| Public app ingress | `{{ (external_zones | first).devices | first | attr('fqdn') }}` | Public TLS on the edge, upstream over Tailscale to selected home apps |
+
+## Platform Notes
+
+- The Flint 2 and Beryl AX are treated as OpenWrt devices.
+- The GL-S200 stays on {{ platform.firmware.iot_ap_firmware }} firmware.
+- Do not collapse VPN egress, Tailscale subnet routing, and core firewalling onto one box.
+- Do not confuse Tailscale transport with end-user web authentication. Private `{{ tailnet.edge_publishing.public_domain }}` apps use their own auth layer at the edge.
+- Keep private and public names separate. `ha.{{ dns.private_tailnet_domain.zone }}` is not the same thing as `ha.{{ tailnet.edge_publishing.public_domain }}`.
+- Tailscale SSH does not replace every SSH key use case. Keep normal SSH keys for break-glass access, deploy keys, and service accounts where Tailscale SSH is not the right tool.

@@ -1,0 +1,74 @@
+{# templates/network/physical-topology.md.j2 #}
+# Physical Topology
+
+This document covers hardware placement and port use. The port inventory in `data/network/ports.yaml` is the authoritative version.
+
+## Placement
+
+- Garage rack: Flint 2, CRS310, server infrastructure, garage YuanLey switch.
+- Office: Beryl AX, GL-S200, office YuanLey switch.
+
+## Logical Topology
+
+```mermaid
+flowchart TB
+    internet["Internet / ISP"]
+    flint["mgmt-router-01<br>Flint 2"]
+    crs["mgmt-switch-01<br>CRS310"]
+    beryl["mgmt-ap-01<br>Beryl AX"]
+    s200["mgmt-thread-01<br>GL-S200"]
+    garage["garage-switch-01<br>YuanLey 9-port"]
+    office["office-switch-01<br>YuanLey 6-port"]
+    nas["server-nas-01"]
+    desktop["lan-desktop-01"]
+
+    internet --> flint
+    flint -->|trunk| crs
+    crs -->|trunk| beryl
+    crs -->|hybrid: 99 untagged, 30 tagged| s200
+    crs -->|access vlan 10| garage
+    crs -->|access vlan 20| office
+    crs -->|access vlan 10| nas
+    crs -->|access vlan 20| desktop
+```
+
+## Port Plan
+
+{% for device_id, device_ports in ports.items() -%}
+{% set device = infrastructure.devices | selectattr('id', 'equalto', device_id) | first | default(none) -%}
+### {{ device.label if device else device_id }}
+
+| Port | Peer | Mode | VLANs | Notes |
+| ---- | ---- | ---- | ---- | ---- |
+{% for port in device_ports -%}
+{% if port.mode == 'trunk' -%}
+| `{{ port.physical }}` | {{ port.peer }} | {{ port.mode }} | `{{ port.allowed_vlans | join(',') }}` | {{ port.notes }} |
+{% elif port.mode == 'hybrid' -%}
+| `{{ port.physical }}` | {{ port.peer }} | {{ port.mode }} | native `{{ port.native_vlan }}`, tagged `{{ port.allowed_vlans | join(',') }}` | {{ port.notes }} |
+{% elif port.mode == 'access' -%}
+| `{{ port.physical }}` | {{ port.peer }} | {{ port.mode }} | {% if port.access_vlan %}`{{ port.access_vlan }}`{% else %}unassigned{% endif %} | {{ port.notes }} |
+{% elif port.mode == 'wan' -%}
+| `{{ port.physical }}` | {{ port.peer }} | {{ port.mode }} | n/a | {{ port.notes }} |
+{% endif -%}
+{% endfor %}
+{% endfor %}
+## Wireless Delivery
+
+| SSID | VLAN | Device | State | Notes |
+| ---- | ---- | ---- | ---- | ---- |
+{% for profile in wireless.break_glass_ssid.broadcast_profiles -%}
+| `{{ wireless.break_glass_ssid.name }}` | {{ wireless.break_glass_ssid.vlan }} | {{ profile.device | replace('mgmt-ap-01', 'Beryl AX') | replace('mgmt-router-01', 'Flint 2') }} | disabled, hidden | Break-glass only |
+{% endfor %}
+{% for ssid in wireless.ssids -%}
+| `{{ ssid.name }}` | {{ ssid.vlan }} | {{ ssid.broadcast_device | replace('mgmt-ap-01', 'Beryl AX') | replace('mgmt-thread-01', 'GL-S200') }} | enabled | {% if ssid.client_isolation %}Client isolation on{% else %}{% if ssid.zone == 'tv' %}Routed through TV VPN policy{% elif ssid.zone == 'iot' %}Dedicated IoT SSID{% else %}Main trusted SSID{% endif %}{% endif %} |
+{% endfor %}
+## Unmanaged Switch Rule
+
+The YuanLey switches are unmanaged. They stay on single-VLAN access ports only. They do not sit on trunks. If a downstream segment needs more than one VLAN, replace the switch.
+
+## Hardware References
+
+- [MikroTik CRS310-8G+2S+IN](https://mikrotik.com/product/crs310_8g_2s_in)
+- [GL.iNet Flint 2](https://www.gl-inet.com/products/gl-mt6000/)
+- [GL.iNet Beryl AX](https://www.gl-inet.com/products/gl-mt3000/)
+- [GL.iNet GL-S200](https://www.gl-inet.com/products/gl-s200/)

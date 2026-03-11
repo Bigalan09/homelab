@@ -1,0 +1,48 @@
+wireless:
+  break_glass_ssid:
+    name: Meerkat Manor Admin
+    zone: management
+    vlan: 99
+    hidden: true
+    purpose: break_glass_only
+    broadcast_profiles:
+      - device: mgmt-ap-01
+        enabled_normally: false
+      - device: mgmt-router-01
+        enabled_normally: false
+  ssids:
+    - name: Meerkat Manor
+      zone: lan
+      vlan: 20
+      broadcast_device: mgmt-ap-01
+      enabled_normally: true
+      client_isolation: false
+    - name: Meerkat Manor Guest
+      zone: guest
+      vlan: 40
+      broadcast_device: mgmt-ap-01
+      enabled_normally: true
+      client_isolation: true
+    - name: Meerkat Manor TV
+      zone: tv
+      vlan: 50
+      broadcast_device: mgmt-ap-01
+      enabled_normally: true
+      client_isolation: false
+    - name: Meerkat Manor Work
+      zone: work
+      vlan: 60
+      broadcast_device: mgmt-ap-01
+      enabled_normally: true
+      client_isolation: true
+    - name: Meerkat Manor IoT
+      zone: iot
+      vlan: 30
+      broadcast_device: mgmt-thread-01
+      enabled_normally: true
+      client_isolation: false
+  gl_s200_operating_mode:
+    management_zone: management
+    management_address: 10.10.99.4
+    client_vlan: 30
+    role: iot_ssid_and_thread_border_router

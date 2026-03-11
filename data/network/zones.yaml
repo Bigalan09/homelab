@@ -1,0 +1,85 @@
+zones:
+  - id: management
+    vlan: 99
+    cidr: 10.10.99.0/24
+    gateway: 10.10.99.1
+    dhcp:
+      enabled: true
+      range: 10.10.99.240-10.10.99.249
+      fixed_endpoints_use_reservations: true
+    trust: high
+    internet_access: full
+    client_isolation: false
+    purpose: Network infrastructure management
+  - id: server
+    vlan: 10
+    cidr: 10.10.10.0/24
+    gateway: 10.10.10.1
+    dhcp:
+      enabled: true
+      range: 10.10.10.200-10.10.10.249
+      fixed_endpoints_use_reservations: true
+    trust: medium
+    internet_access: full
+    client_isolation: false
+    purpose: Shared services, storage, and compute
+  - id: lan
+    vlan: 20
+    cidr: 10.10.20.0/24
+    gateway: 10.10.20.1
+    dhcp:
+      enabled: true
+      range: 10.10.20.50-10.10.20.220
+      fixed_endpoints_use_reservations: false
+    trust: high
+    internet_access: full
+    client_isolation: false
+    purpose: Personal trusted devices
+  - id: iot
+    vlan: 30
+    cidr: 10.10.30.0/24
+    gateway: 10.10.30.1
+    dhcp:
+      enabled: true
+      range: 10.10.30.50-10.10.30.239
+      fixed_endpoints_use_reservations: true
+    trust: low
+    internet_access: limited
+    client_isolation: false
+    purpose: Smart home and automation clients
+  - id: guest
+    vlan: 40
+    cidr: 10.10.40.0/24
+    gateway: 10.10.40.1
+    dhcp:
+      enabled: true
+      range: 10.10.40.50-10.10.40.240
+      fixed_endpoints_use_reservations: false
+    trust: untrusted
+    internet_access: internet_only
+    client_isolation: true
+    purpose: Guest internet only access
+  - id: tv
+    vlan: 50
+    cidr: 10.10.50.0/28
+    gateway: 10.10.50.1
+    dhcp:
+      enabled: true
+      range: 10.10.50.5-10.10.50.14
+      fixed_endpoints_use_reservations: true
+    trust: low
+    internet_access: vpn_only
+    client_isolation: false
+    purpose: Media devices routed through VPN
+  - id: work
+    vlan: 60
+    cidr: 10.10.60.0/28
+    gateway: 10.10.60.1
+    dhcp:
+      enabled: true
+      range: 10.10.60.5-10.10.60.14
+      fixed_endpoints_use_reservations: true
+    trust: restricted
+    internet_access: full
+    client_isolation: true
+    purpose: Work devices with explicit internal exceptions only

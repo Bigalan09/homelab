@@ -1,0 +1,115 @@
+dns:
+  zone: home.arpa
+  private_tailnet_domain:
+    zone: tail.bigalan.dev
+    authority: adguard_home_via_split_dns
+    private_only: true
+    notes:
+      - Use this zone for tailnet-only app names on the bigalan.dev domain.
+      - Do not reuse public bigalan.dev hostnames here.
+  public_domain:
+    zone: bigalan.dev
+    authority: external_dns_provider
+    ingress_node: edge-proxy-01.bigalan.dev
+    notes:
+      - Public DNS lives outside AdGuard Home.
+      - Selected application subdomains resolve here.
+  primary_resolver:
+    host: server-dns-01.home.arpa
+    zone: server
+    address: 10.10.10.53
+    software: AdGuard Home
+  upstreams:
+    - name: quad9
+      type: doh
+      endpoint: https://dns.quad9.net/dns-query
+    - name: cloudflare
+      type: doh
+      endpoint: https://cloudflare-dns.com/dns-query
+  split_dns_suffixes:
+    - home.arpa
+    - tail.bigalan.dev
+  local_records:
+    - fqdn: server-dns-01.home.arpa
+      type: A
+      value: 10.10.10.53
+      aliases: [dns.home.arpa, adguard.home.arpa]
+    - fqdn: server-ha-01.home.arpa
+      type: A
+      value: 10.10.10.20
+      aliases: [ha.home.arpa]
+    - fqdn: ha.tail.bigalan.dev
+      type: A
+      value: 10.10.10.20
+      aliases: []
+    - fqdn: server-proxy-01.home.arpa
+      type: A
+      value: 10.10.10.21
+      aliases: [proxy.home.arpa, media.home.arpa]
+    - fqdn: media.tail.bigalan.dev
+      type: A
+      value: 10.10.10.21
+      aliases: []
+    - fqdn: server-nas-01.home.arpa
+      type: A
+      value: 10.10.10.22
+      aliases: [nas.home.arpa]
+    - fqdn: nas.tail.bigalan.dev
+      type: A
+      value: 10.10.10.22
+      aliases: []
+    - fqdn: server-mqtt-01.home.arpa
+      type: A
+      value: 10.10.10.23
+      aliases: [mqtt.home.arpa]
+    - fqdn: server-log-01.home.arpa
+      type: A
+      value: 10.10.10.25
+      aliases: []
+    - fqdn: server-monitor-01.home.arpa
+      type: A
+      value: 10.10.10.26
+      aliases: []
+    - fqdn: server-tailnet-01.home.arpa
+      type: A
+      value: 10.10.10.27
+      aliases: []
+    - fqdn: mgmt-router-01.home.arpa
+      type: A
+      value: 10.10.99.1
+      aliases: []
+    - fqdn: mgmt-switch-01.home.arpa
+      type: A
+      value: 10.10.99.2
+      aliases: []
+    - fqdn: mgmt-ap-01.home.arpa
+      type: A
+      value: 10.10.99.3
+      aliases: []
+    - fqdn: mgmt-thread-01.home.arpa
+      type: A
+      value: 10.10.99.4
+      aliases: []
+  client_policies:
+    management:
+      advertised_resolver: 10.10.10.53
+      internal_records: true
+    server:
+      advertised_resolver: 10.10.10.53
+      internal_records: true
+    lan:
+      advertised_resolver: 10.10.10.53
+      internal_records: true
+    iot:
+      advertised_resolver: 10.10.10.53
+      internal_records: true
+    tv:
+      advertised_resolver: 10.10.10.53
+      internal_records: true
+    guest:
+      advertised_resolver: router
+      internal_records: false
+      notes: Guest clients do not receive internal DNS.
+    work:
+      advertised_resolver: router
+      internal_records: false

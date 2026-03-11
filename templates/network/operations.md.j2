@@ -1,0 +1,141 @@
+{# templates/network/operations.md.j2 #}
+# Operations
+
+This document covers rollout, validation, monitoring, backups, and recovery. The design is not finished until it is testable.
+
+## Rollout Order
+
+### Step 1: Wired core
+
+- Build VLAN interfaces on the Flint 2.
+- Build VLAN membership and port profiles on the CRS310.
+- Confirm `management`, `server`, and `lan` on wired links first.
+- Put infrastructure management on `VLAN {{ (zones | selectattr('id', 'equalto', 'management') | first).vlan }}`.
+- Confirm that a wired management path still works before touching Wi-Fi.
+
+### Step 2: DNS and service layer
+
+- Deploy AdGuard Home at `{{ dns.primary_resolver.address }}`.
+- Load the `{{ dns.zone }}` local records from the YAML.
+- Point approved VLANs at AdGuard Home.
+- Keep guest and work on public recursion.
+
+### Step 3: Wireless
+
+- Bring up the Beryl AX trunk and map SSIDs for `99`, `20`, `40`, `50`, and `60`.
+- Configure the hidden admin SSID on Beryl AX.
+- Configure the hidden admin SSID on the Flint 2, but keep it disabled under normal conditions.
+- Bring up the GL-S200 with management on `VLAN 99` and the IoT SSID on `VLAN {{ wireless.gl_s200_operating_mode.client_vlan }}`.
+
+### Step 4: Firewall and VPN
+
+- Apply the default-deny inter-VLAN policy.
+- Add only the named service flows.
+- Enable TV VLAN VPN egress and confirm policy routing.
+- Do not move Tailscale onto the Flint 2.
+
+### Step 5: Tailnet
+
+- Build `{{ tailnet.subnet_router.host }}` on `VLAN {{ (zones | selectattr('id', 'equalto', tailnet.subnet_router.zone) | first).vlan }}`.
+- Advertise `{{ tailnet.advertised_routes | join('` and `') }}`.
+- Enable MagicDNS and split DNS for `{{ tailnet.split_dns_suffixes | join('` and `') }}`.
+- Apply grants for admins, app users, storage users, and the edge proxy tag.
+- Enable Tailscale SSH on approved Linux edge and server nodes.
+- Disable public password SSH and close public port `22` on the approved Linux edge and server nodes.
+- Validate remote NAS administration and `SMB` file access over the tailnet from the client platforms that actually matter.
+
+### Step 6: Edge publishing
+
+- Build `{{ tailnet.edge_publishing.edge_node }}` in the `edge` zone.
+- Join edge servers to the tailnet before exposing anything publicly.
+- Point selected `{{ tailnet.edge_publishing.public_domain }}` subdomains at the edge proxy.
+- Join the edge proxy to the tailnet with a dedicated tag.
+- Publish selected home apps through the edge proxy over Tailscale.
+- Put an auth layer in front of anything that is not meant to be public.
+
+## Validation Checklist
+
+### Core network
+
+- `VLAN 99`, `10`, and `20` route correctly on wired ports.
+- `guest`, `tv`, and `work` stay isolated from the wrong internal zones.
+- Unmanaged switches see one VLAN only.
+
+### Wireless
+
+- The Beryl AX SSIDs land in the right VLANs.
+- Guest and work isolation works.
+- The hidden admin SSID is reachable from the right hardware only.
+- The GL-S200 keeps management on `99` and client traffic on `{{ wireless.gl_s200_operating_mode.client_vlan }}`.
+
+### DNS
+
+- `{{ dns.zone }}` resolves from `management`, `server`, `lan`, `iot`, and `tv`.
+- Guest gets no internal records.
+- Work gets no internal records by default.
+- AdGuard filtering works without breaking required vendor or update traffic.
+
+### Tailnet
+
+- `{{ tailnet.split_dns_suffixes[0] }}` resolves over split DNS from remote clients.
+- `{{ tailnet.split_dns_suffixes[1] }}` resolves over split DNS from remote clients.
+- Edge servers resolve each other over MagicDNS and can still resolve `{{ dns.zone }}` over split DNS.
+- Tailnet admins can reach `{{ tailnet.advertised_routes | join('` and `') }}`.
+- Tailnet app users can reach the approved app set only.
+- Tailnet storage users can mount the NAS over `SMB` and reach the NAS admin UI over HTTPS.
+- Tailnet does not reach `guest`, `tv`, `work`, or arbitrary IoT clients.
+- Public DNS for `{{ tailnet.edge_publishing.public_domain }}` does not point at tailnet IPs.
+
+### SSH
+
+- Tailscale SSH works for approved Linux edge and server nodes.
+- `{{ tailnet.ssh.high_risk_users.users | join('` or `') }}` or equivalent high-risk users require a re-check.
+- Public SSH is closed on hosts that have a working tailnet and recovery path.
+- Break-glass keys still work on the hosts that are meant to retain them.
+
+### Edge publishing
+
+{% for app in tailnet.edge_publishing.published_apps -%}
+- `{{ app.public_name }}` resolves to the edge proxy, not to home.
+{% endfor -%}
+- The edge proxy can reach only its named backends over Tailscale.
+- `{{ tailnet.edge_publishing.public_domain }}` exposure does not accidentally publish NAS file services or infrastructure admin pages.
+
+### TV VPN path
+
+- `VLAN {{ (zones | selectattr('id', 'equalto', 'tv') | first).vlan }}` exits through the VPN.
+- DNS and local media still work from `tv`.
+- Tailnet traffic still works through the separate subnet router while the TV VPN path is active.
+
+## Monitoring
+
+- Forward router, switch, AP, and server logs to `{{ (services | selectattr('id', 'equalto', 'syslog') | first).host }}`.
+- Collect interface, CPU, memory, and health metrics at `{{ (services | selectattr('id', 'equalto', 'metrics-ui') | first).host }}`.
+- Alert on gateway loss, CRS310 loss, Beryl loss, GL-S200 loss, WAN loss, VPN failure for `VLAN {{ (zones | selectattr('id', 'equalto', 'tv') | first).vlan }}`, and unusual interface errors.
+
+## Backups
+
+Back up these items together:
+
+- Flint 2 configuration export
+- CRS310 configuration export
+- Beryl AX configuration export
+- GL-S200 configuration export
+- DHCP reservations
+- AdGuard Home configuration and local records
+- Tailscale policy file and route approvals
+- Tailscale SSH policy and break-glass SSH key inventory
+- Edge proxy configuration and `{{ tailnet.edge_publishing.public_domain }}` DNS records
+- the YAML definitions under `data/network/`
+- port map and recovery notes
+
+Store one copy on site and one off site. Protect secrets and keys properly.
+
+## Recovery
+
+- Keep one wired management path available.
+- Keep the Flint 2 admin SSID configured for recovery and disabled during normal operation.
+- Keep the Beryl admin SSID hidden and limited to break-glass use.
+- Test restore, login, and basic wired admin access after major changes.
+
+Recovery means you can still get back in when a VLAN change goes wrong.

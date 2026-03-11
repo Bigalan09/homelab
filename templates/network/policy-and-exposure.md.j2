@@ -1,0 +1,108 @@
+{# templates/network/policy-and-exposure.md.j2 #}
+# Policy And Exposure
+
+This document covers inter-VLAN policy and service publication. The default posture is deny.
+
+## Rule Baseline
+
+1. Allow established and related traffic.
+2. Drop invalid traffic.
+3. Allow DHCP where required.
+4. Allow DNS and NTP to the named infrastructure endpoints.
+5. Allow management access from `VLAN 99`.
+6. Allow named service flows only.
+7. Apply VPN policy routing to `VLAN {{ (zones | selectattr('id', 'equalto', 'tv') | first).vlan }}`.
+8. Drop the rest.
+
+## Zone Policy Summary
+
+| Source | Destination | Action | Notes |
+| ---- | ---- | ---- | ---- |
+| management | infrastructure and approved services | allow | Admin plane |
+| management | internet | allow | Updates and diagnostics |
+| server | internet | allow | Updates and backups |
+| server | internal zones | deny by default | Reply traffic and named services only |
+| lan | server | allow by service | Apps, storage, DNS |
+| lan | iot | allow by service | Control paths and selective discovery only |
+| lan | management, guest, work | deny by default | No lateral trust creep |
+| iot | server | allow by service | DNS, NTP, MQTT, Home Assistant |
+| iot | internet | allow by policy | Keep vendor access narrow |
+| iot | management, lan, guest, work | deny by default | No lateral access |
+| guest | internet | allow | Internet only |
+| guest | any internal zone | deny | No exceptions |
+| tv | server | allow by service | DNS, NTP, reverse proxy, media |
+| tv | internet | allow via VPN | Forced egress path |
+| tv | other internal zones | deny | Narrow on purpose |
+| work | server | allow by service | Only named internal services |
+| work | internet | allow | Standard outbound access |
+| work | management, lan, iot, guest, tv | deny by default | Keep work separate |
+
+## Named Service Flows
+
+| Service | Host | Port | Allowed Sources |
+| ---- | ---- | ---- | ---- |
+{% for svc in services -%}
+| {{ svc.label }} | `{{ svc.get('aliases', [svc.host])[0] }}` | `{{ svc.ports | join('`, `') }}` | `{{ svc.allowed_sources | join('`, `') }}` |
+{% endfor %}
+Guest has no internal services. Work gets no internal DNS overrides.
+
+Remote NAS storage is tailnet-only. Do not expose `SMB` or other raw file protocols on the public edge.
+
+Private tailnet-only app names use `*.{{ dns.private_tailnet_domain.zone }}`. Public app names use `*.{{ dns.public_domain.zone }}`. The same hostname is not reused for both roles.
+
+## SSH Policy
+
+- Linux edge and server nodes use Tailscale SSH as the primary admin path.
+- `homelab-admins` SSH to the documented edge and server nodes over the tailnet.
+- High-risk SSH users such as `{{ tailnet.ssh.high_risk_users.users | join('`, `') }}` use `{{ tailnet.ssh.high_risk_users.action }}` mode.
+- Public SSH stays closed on the documented Linux edge and server nodes.
+- OpenSSH keys remain for break-glass access, bootstrap, and non-interactive service use.
+
+Tailscale grants gate network access. Sensitive applications still keep their own authentication.
+
+## TV VLAN VPN Policy
+
+`VLAN {{ (zones | selectattr('id', 'equalto', 'tv') | first).vlan }}` is forced through the VPN egress on the Flint 2. That policy is separate from Tailscale. Do not combine the TV VPN client with the Tailnet subnet router.
+
+Allowed from `tv`:
+
+- `{{ dns.primary_resolver.host }}` on `53`
+- `mgmt-router-01.{{ dns.zone }}` on `123`
+- `proxy.{{ dns.zone }}` on `443`
+- approved local media endpoints behind the reverse proxy
+- internet through the VPN path
+
+Denied from `tv`:
+
+- direct access to `management`
+- direct access to `lan`
+- direct access to `iot`
+- direct access to `work`
+
+## Discovery
+
+- No blanket mDNS reflection.
+- If casting or AirPlay needs reflection, add it as a named exception and document both source and destination zones.
+- Do not reflect discovery into `guest`.
+- Do not reflect discovery into `work`.
+
+## Edge Zone
+
+`edge` systems are external. They do not get broad access back into the homelab.
+
+`{{ (external_zones | first).devices | first | attr('fqdn') }}` is the public reverse proxy for selected apps:
+
+- It terminates `{{ (external_zones | first).public_domain }}` TLS publicly.
+- It joins the tailnet as `{{ (external_zones | first).devices | first | attr('tailscale') | attr('tags') | first }}`.
+- It reaches only the named app backends it publishes.
+- It is managed over the tailnet with Tailscale SSH.
+- It must not get blanket access to the `server` subnet.
+- It must not publish `SMB`, `NFS`, router admin, switch admin, or AdGuard admin.
+
+Other edge servers follow the same rule: join the tailnet for private admin and private service access, then expose public traffic only where a service is explicitly published.
+
+Baseline published apps:
+
+{% for app in tailnet.edge_publishing.published_apps -%}
+- `{{ app.public_name }}` -> `{{ app.upstream }}`
+{% endfor %}

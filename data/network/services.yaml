@@ -1,0 +1,79 @@
+services:
+  - id: dns-recursion
+    label: DNS recursion
+    host: server-dns-01.home.arpa
+    zone: server
+    address: 10.10.10.53
+    ports: [tcp/53, udp/53]
+    allowed_sources: [management, server, lan, iot, tv]
+  - id: adguard-admin
+    label: AdGuard admin
+    host: server-dns-01.home.arpa
+    aliases: [adguard.home.arpa]
+    zone: server
+    address: 10.10.10.53
+    ports: [tcp/443]
+    allowed_sources: [management, homelab-admins]
+  - id: home-assistant
+    label: Home Assistant
+    host: server-ha-01.home.arpa
+    aliases: [ha.home.arpa]
+    zone: server
+    address: 10.10.10.20
+    ports: [tcp/8123]
+    allowed_sources: [management, lan, iot, homelab-app-users, edge-proxy]
+  - id: reverse-proxy
+    label: Reverse proxy
+    host: server-proxy-01.home.arpa
+    aliases: [proxy.home.arpa, media.home.arpa]
+    zone: server
+    address: 10.10.10.21
+    ports: [tcp/443]
+    allowed_sources: [management, lan, tv, work, homelab-app-users, edge-proxy]
+  - id: nas-admin
+    label: NAS admin
+    host: server-nas-01.home.arpa
+    aliases: [nas.home.arpa]
+    zone: server
+    address: 10.10.10.22
+    ports: [tcp/443]
+    allowed_sources: [management, lan, homelab-storage-users]
+  - id: nas-smb
+    label: NAS file access
+    host: server-nas-01.home.arpa
+    zone: server
+    address: 10.10.10.22
+    ports: [tcp/445]
+    allowed_sources: [management, lan, homelab-storage-users]
+    notes:
+      - Remote over Tailscale only.
+      - Do not publish on bigalan.dev.
+  - id: mqtt
+    label: MQTT
+    host: server-mqtt-01.home.arpa
+    aliases: [mqtt.home.arpa]
+    zone: server
+    address: 10.10.10.23
+    ports: [tcp/1883, tcp/8883]
+    allowed_sources: [management, iot, lan]
+  - id: syslog
+    label: Syslog
+    host: server-log-01.home.arpa
+    zone: server
+    address: 10.10.10.25
+    ports: [udp/514, tcp/514]
+    allowed_sources: [management, server]
+  - id: metrics-ui
+    label: Metrics UI
+    host: server-monitor-01.home.arpa
+    zone: server
+    address: 10.10.10.26
+    ports: [tcp/443]
+    allowed_sources: [management]
+  - id: ntp
+    label: NTP
+    host: mgmt-router-01.home.arpa
+    zone: management
+    address: 10.10.99.1
+    ports: [udp/123]
+    allowed_sources: [management, server, lan, iot, tv, work]

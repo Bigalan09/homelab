@@ -1,0 +1,80 @@
+infrastructure:
+  devices:
+    - id: mgmt-router-01
+      label: Flint 2
+      fqdn: mgmt-router-01.home.arpa
+      model: GL.iNet Flint 2
+      sku: MT6000
+      role: gateway_router
+      description: OpenWrt gateway, inter-VLAN firewall, and TV VLAN VPN egress
+      zone: management
+      management_address: 10.10.99.1
+      location: garage_rack
+      firmware: OpenWrt
+    - id: mgmt-switch-01
+      label: CRS310
+      fqdn: mgmt-switch-01.home.arpa
+      model: MikroTik CRS310
+      sku: CRS310-8G+2S+IN
+      role: core_switch
+      description: core managed switch
+      zone: management
+      management_address: 10.10.99.2
+      location: garage_rack
+      firmware: RouterOS
+    - id: mgmt-ap-01
+      label: Beryl AX
+      fqdn: mgmt-ap-01.home.arpa
+      model: GL.iNet Beryl AX
+      sku: MT3000
+      role: office_ap_bridge
+      description: OpenWrt office AP bridge
+      zone: management
+      management_address: 10.10.99.3
+      location: office
+      firmware: OpenWrt
+    - id: mgmt-thread-01
+      label: GL-S200
+      fqdn: mgmt-thread-01.home.arpa
+      model: GL.iNet GL-S200
+      role: iot_ap_thread_border_router
+      description: office Thread and IoT box on GL.iNet firmware
+      zone: management
+      management_address: 10.10.99.4
+      location: office
+      firmware: GL.iNet
+    - id: garage-switch-01
+      label: garage YuanLey
+      model: YuanLey 9-port 2.5G PoE
+      role: unmanaged_access_switch
+      zone: server
+      location: garage_rack
+    - id: office-switch-01
+      label: office YuanLey
+      model: YuanLey 6-port 2.5G
+      role: unmanaged_access_switch
+      zone: lan
+      location: office
+
+external_zones:
+  - id: edge
+    trust: controlled_external
+    description: VPS or hosted systems connected to the wider architecture
+    public_domain: bigalan.dev
+    tailnet_membership_required: true
+    private_admin_model: tailscale
+    devices:
+      - id: edge-proxy-01
+        fqdn: edge-proxy-01.bigalan.dev
+        private_fqdn: edge-proxy.tail.bigalan.dev
+        role: public_reverse_proxy
+        transport_to_homelab: tailscale
+        tailscale:
+          enabled: true
+          tags: ["tag:edge-proxy"]
+          ssh: true
+          public_ssh_port_open: false
+        notes:
+          - Public TLS for bigalan.dev terminates here.
+          - This node proxies selected HTTP services back into the homelab.
+          - edge-proxy.tail.bigalan.dev tracks the node's Tailscale IP in private DNS.

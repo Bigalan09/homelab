@@ -1,0 +1,263 @@
+{# templates/network/dns-and-tailnet.md.j2 #}
+# DNS and Tailnet
+
+This design keeps internal naming and remote access tight. It does not pretend the tailnet is another trusted VLAN.
+
+## DNS Model
+
+- Internal suffix: `{{ dns.zone }}`
+- Primary internal resolver: AdGuard Home on `{{ dns.primary_resolver.host }}` (`{{ dns.primary_resolver.address }}`)
+- DNS authority: local records and aliases in AdGuard Home
+- Recursive DNS: AdGuard for `management`, `server`, `lan`, `iot`, and `tv`; public recursion for `guest` and `work`
+- Public app domain: `{{ dns.public_domain.zone }}`, served from the `edge` zone rather than AdGuard Home
+- Private tailnet app domain: `{{ dns.private_tailnet_domain.zone }}`
+- Tailnet-native private names: MagicDNS on the tailnet `{{ tailnet.private_naming.tailnet_native_namespace }}` namespace
+
+## Naming Shape
+
+The namespace is flat:
+
+- Device names: `mgmt-router-01.{{ dns.zone }}`, `server-ha-01.{{ dns.zone }}`
+- Service aliases: `dns.{{ dns.zone }}`, `adguard.{{ dns.zone }}`, `ha.{{ dns.zone }}`, `nas.{{ dns.zone }}`, `proxy.{{ dns.zone }}`
+
+Do not invent per-zone subdomains. The flat namespace is simpler.
+
+There are four naming layers in this design:
+
+- `{{ dns.zone }}` for homelab services reached over split DNS
+- `{{ dns.private_tailnet_domain.zone }}` for private tailnet-only app and server names on your own domain
+- Tailnet MagicDNS names for devices that join the tailnet directly, especially edge servers
+- `{{ dns.public_domain.zone }}` for public HTTP(S) entrypoints on the edge
+
+Do not collapse those into one namespace. They solve different problems.
+
+## AdGuard Home Role
+
+AdGuard Home does four jobs:
+
+- recursive DNS for approved local VLANs
+- local records for `{{ dns.zone }}`
+- DNS filtering
+- split DNS target for the tailnet
+
+Guest does not receive internal records. Work does not receive internal records.
+
+`{{ dns.public_domain.zone }}` is separate. Public DNS for `*.{{ dns.public_domain.zone }}` lives outside AdGuard Home and points at the edge proxy. Do not try to make AdGuard Home authoritative for the public domain.
+
+The private `{{ dns.private_tailnet_domain.zone }}` zone is different. It resolves only for tailnet users, using Tailscale split DNS to reach AdGuard Home.
+
+## Local Records
+
+| FQDN | Address | Alias |
+| ---- | ---- | ---- |
+{% for record in dns.local_records -%}
+| `{{ record.fqdn }}` | `{{ record.value }}` | {% if record.aliases %}{{ record.aliases | map('tojson') | join(', ') | replace('"', '`') }}{% else %}none{% endif %} |
+{% endfor %}
+## Tailnet Model
+
+- Policy model: Tailscale `{{ tailnet.policy_model }}`
+- MagicDNS: {{ 'enabled' if tailnet.magicdns else 'disabled' }}
+- Split DNS: `{{ tailnet.split_dns_suffixes | join('` and `') }}` resolve through home DNS
+- Advertised subnet routes: `{{ tailnet.advertised_routes | join('` and `') }}`
+- Subnet router host: `{{ tailnet.subnet_router.host }}` (`{{ tailnet.subnet_router.address }}`)
+- Exit node use: none
+
+The tailnet does not export `lan`, `iot`, `guest`, `tv`, or `work`. Remote access is for administration and a small app set, not general browsing across the house.
+
+## Split DNS Behaviour
+
+- Tailnet devices keep their normal internet DNS path.
+- Requests for `{{ dns.split_dns_suffixes[0] }}` go to AdGuard Home only.
+- Requests for `{{ dns.split_dns_suffixes[1] }}` also go to AdGuard Home only.
+- Guest VLAN clients never receive internal `{{ dns.zone }}` answers.
+- Work VLAN clients use public recursion.
+- Edge servers that join the tailnet use MagicDNS for node identity and can still resolve `{{ dns.zone }}` over split DNS when they need homelab service names.
+
+This avoids dragging all DNS through home when all that is really needed is internal name resolution.
+
+## Private Tailnet Naming
+
+If an edge server joins the tailnet, it already has a private Tailscale name. That is the right place to start.
+
+- Use MagicDNS for node-to-node administration.
+- Keep split DNS for `{{ dns.zone }}` so tailnet devices can reach named homelab services.
+- Use `{{ dns.private_tailnet_domain.zone }}` when you want private service names on your own domain instead of `{{ tailnet.private_naming.tailnet_native_namespace }}`.
+  That gives the tailnet private DNS without confusing it with the public `{{ dns.public_domain.zone }}` path.
+
+Preferred private names:
+
+{% for record in dns.local_records if record.fqdn.endswith(dns.private_tailnet_domain.zone) -%}
+- `{{ record.fqdn }}`
+{% endfor %}
+Those names are private because Tailscale split DNS resolves them to private tailnet or homelab endpoints, and Tailscale grants decide who can connect.
+
+## Public DNS To Tailnet IPs
+
+This design does not publish public DNS records that point at Tailscale IPs.
+
+Dangers:
+
+- The hostnames become publicly enumerable even if the services are not reachable.
+- Public TLS certificates for those names put them in Certificate Transparency logs.
+- DNS caches and split-horizon mistakes become harder to reason about.
+- Private `{{ dns.public_domain.zone }}` names collide with public naming and create avoidable confusion.
+
+Rule:
+
+- Public `*.{{ dns.public_domain.zone }}` records point to public ingress.
+- Private `*.{{ dns.private_tailnet_domain.zone }}` records resolve only over split DNS to tailnet users.
+
+## Tailnet Access Model
+
+Four access levels exist:
+
+{% for identity in tailnet.identities -%}
+- `{{ identity.id }}`: {{ identity.purpose }}
+{% endfor %}
+Admin-only remote service:
+
+{% for app in tailnet.approved_apps if app.allowed_identities == ['group:homelab-admins'] -%}
+- `{{ app.fqdn }}:{{ app.ports | join(', ') | replace('tcp/', '') }}`
+{% endfor %}
+Approved remote app set for `homelab-app-users`:
+
+{% for app in tailnet.approved_apps if 'group:homelab-app-users' in app.allowed_identities -%}
+- `{{ app.fqdn }}:{{ app.ports | join(', ') | replace('tcp/', '') }}`
+{% endfor %}
+Remote storage path:
+
+- `{{ tailnet.storage_access.host }}:445` for `SMB` over the tailnet
+- `nas.{{ dns.zone }}:443` for NAS administration
+- `NFS` stays internal
+
+Remote NAS storage uses `SMB` over Tailscale for managed laptops and desktops, plus HTTPS for NAS administration.
+
+`WebDAV`, `Taildrive`, and `NFS` are not used.
+
+## SSH Model
+
+SSH access is simple:
+
+- Linux edge and server nodes advertise Tailscale SSH.
+- Tailnet policy controls who can SSH and as which users.
+- High-risk users such as `{{ tailnet.ssh.high_risk_users.users | join('`, `') }}` use `{{ tailnet.ssh.high_risk_users.action }}` mode.
+- Password SSH is disabled.
+- Public port `22` is closed.
+
+OpenSSH keys still matter for a few cases:
+
+- break-glass recovery
+- bootstrap before Tailscale is online
+- deploy keys and service accounts
+- platforms where Tailscale SSH is not the right fit
+
+Tailscale SSH is the admin path for those nodes.
+
+## `{{ tailnet.edge_publishing.public_domain }}` Publishing Model
+
+`{{ tailnet.edge_publishing.public_domain }}` is for selected HTTP(S) apps only. It is not a shortcut to make the whole homelab public.
+
+- Public DNS for `*.{{ tailnet.edge_publishing.public_domain }}` points to `{{ tailnet.edge_publishing.edge_node }}`.
+- Edge servers join the tailnet and use it for private administration.
+- The edge proxy reaches home backends over Tailscale.
+- TLS for `{{ tailnet.edge_publishing.public_domain }}` terminates on the edge proxy with ordinary public certificates.
+- Tailscale protects the edge-to-home transport. It does not authenticate the browser session to `{{ tailnet.edge_publishing.public_domain }}`.
+- Put an auth layer on the edge proxy for anything that is not meant to be publicly reachable.
+- Do not publish NAS file protocols on `{{ tailnet.edge_publishing.public_domain }}`.
+
+Published apps:
+
+{% for app in tailnet.edge_publishing.published_apps -%}
+- `{{ app.public_name }}` -> `{{ app.upstream }}`
+{% endfor %}
+Tailscale Funnel and Tailscale-issued HTTPS certificates are tied to the tailnet `{{ tailnet.private_naming.tailnet_native_namespace }}` namespace, not `{{ tailnet.edge_publishing.public_domain }}`.
+
+## Tailnet-Only `{{ tailnet.edge_publishing.public_domain }}` Names
+
+If you want private app URLs on your own domain, use `{{ dns.private_tailnet_domain.zone }}`, not the same names you use publicly.
+
+Examples:
+
+{% for record in dns.local_records if record.fqdn.endswith(dns.private_tailnet_domain.zone) -%}
+- `{{ record.fqdn }}` for private {{ record.fqdn.split('.')[0] | replace('-', ' ') }} access
+{% endfor %}
+This gives you what you actually want:
+
+- your own domain in the browser
+- access gated by Tailscale grants
+- no dependency on `{{ tailnet.private_naming.tailnet_native_namespace }}` names for day-to-day use
+
+It does not replace app auth. Tailscale grants decide who can open the TCP connection. Sensitive apps keep their own login.
+
+## Funnel And Services
+
+This design does not use Tailscale Services or Tailscale Funnel.
+
+- Private app names use `{{ dns.private_tailnet_domain.zone }}`.
+- Public app names use `{{ dns.public_domain.zone }}`.
+- `{{ tailnet.private_naming.tailnet_native_namespace }}` names remain available for raw device identity and administration.
+
+## Grants Structure
+
+```json
+{
+  "groups": {
+{% set groups = tailnet.identities | selectattr('type', 'equalto', 'group') | list %}
+{% for identity in groups %}
+    "{{ identity.id }}": []{{ "," if not loop.last else "" }}
+{% endfor %}
+  },
+  "tagOwners": {
+{% set tag_items = tailnet.tag_owners | dictsort %}
+{% for tag, owners in tag_items %}
+    "{{ tag }}": {{ owners | tojson }}{{ "," if not loop.last else "" }}
+{% endfor %}
+  },
+  "hosts": {
+    "meerkat-mgmt": "{{ (zones | selectattr('id', 'equalto', 'management') | first).cidr }}",
+    "meerkat-server": "{{ (zones | selectattr('id', 'equalto', 'server') | first).cidr }}",
+{% set app_hosts = tailnet.approved_apps | rejectattr('service', 'equalto', 'adguard-admin') | list %}
+{% for app in app_hosts %}
+{% set short = app.fqdn.split('.')[0] %}
+    "{{ short }}": "{{ app.address }}"{{ "," if not loop.last else "" }}
+{% endfor %}
+  },
+  "grants": [
+    {
+      "src": ["group:homelab-admins"],
+      "dst": ["meerkat-mgmt", "meerkat-server"],
+      "ip": ["*"]
+    },
+    {
+      "src": ["group:homelab-app-users"],
+      "dst": ["ha", "proxy"],
+      "ip": ["tcp:443", "tcp:8123"]
+    },
+    {
+      "src": ["group:homelab-storage-users"],
+      "dst": ["nas"],
+      "ip": ["tcp:443", "tcp:445"]
+    },
+    {
+      "src": ["tag:edge-proxy"],
+      "dst": ["ha", "proxy"],
+      "ip": ["tcp:443", "tcp:8123"]
+    }
+  ]
+}
+```
+
+This is the policy structure used by the design.
+
+## Source References
+
+- [Tailscale grants syntax](https://tailscale.com/docs/reference/syntax/grants)
+- [Tailscale DNS and split DNS](https://tailscale.com/docs/reference/dns-in-tailscale)
+- [MagicDNS](https://tailscale.com/kb/1081/magicdns/)
+- [Tailscale SSH](https://tailscale.com/docs/features/tailscale-ssh)
+- [Tailscale HTTPS certificates](https://tailscale.com/docs/how-to/set-up-https-certificates)
+- [Tailscale Funnel](https://tailscale.com/kb/1223/tailscale-funnel)
+- [Tailscale Services](https://tailscale.com/docs/features/tailscale-services)
+- [Taildrive](https://tailscale.com/docs/features/taildrive)
+- [RFC 8375: `home.arpa`](https://www.rfc-editor.org/rfc/rfc8375.html)
+- [GL.iNet Tailscale note](https://docs.gl-inet.com/router/en/4/interface_guide/tailscale/)

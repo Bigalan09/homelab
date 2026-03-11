@@ -1,0 +1,26 @@
+version: 2
+
+site:
+  id: 10
+  name: homelab
+  label: Meerkat Manor
+  cidr_summary: 10.10.0.0/16
+  source_of_truth: data/network/
+  notes:
+    - Core routing, firewalling, and TV VLAN VPN egress live on the Flint 2.
+    - The CRS310 is the central managed switch.
+    - The Beryl AX carries the office wireless networks.
+    - The GL-S200 is managed on VLAN 99 and bridges the IoT SSID into VLAN 30.
+    - If a prose document disagrees with this file, this file wins until corrected.
+
+platform:
+  firmware:
+    gateway_firmware: OpenWrt
+    office_ap_firmware: OpenWrt
+    iot_ap_firmware: GL.iNet
+  design_defaults:
+    inter_vlan_policy: default_deny
+    internal_dns_suffix: home.arpa
+    private_tailnet_app_suffix: tail.bigalan.dev
+    internal_dns_owner: adguard_home
+    tailnet_policy_model: grants
