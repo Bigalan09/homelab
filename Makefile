@@ -11,7 +11,7 @@ setup:
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
 
-## list: list available devices discovered from devices/ directory
+## list: list available devices discovered from docs/devices/ directory
 list:
 	PYTHONPATH=generator $(PYTHON) generator/cli.py list
 
@@ -23,7 +23,7 @@ validate:
 generate:
 	PYTHONPATH=generator $(PYTHON) generator/cli.py generate $(DEVICE)
 
-## generate-all: render configs for all devices in inventory
+## generate-all: render configs for all devices in docs/inventory
 generate-all:
 	PYTHONPATH=generator $(PYTHON) generator/cli.py generate all
 
