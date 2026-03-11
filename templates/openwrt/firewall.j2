@@ -1,0 +1,40 @@
+{% set fw = firewall | default({}) %}
+{% set defaults = fw.defaults | default({}) %}
+config defaults
+    option input '{{ defaults.input | default("ACCEPT") }}'
+    option output '{{ defaults.output | default("ACCEPT") }}'
+    option forward '{{ defaults.forward | default("REJECT") }}'
+{% if defaults.synflood_protect is defined %}
+    option syn_flood '{{ defaults.synflood_protect }}'
+{% endif %}
+
+{% set zones = fw.zones | default([
+  {"name": "lan", "input": "ACCEPT", "output": "ACCEPT", "forward": "ACCEPT", "network": ["lan"]},
+  {"name": "wan", "input": "REJECT", "output": "ACCEPT", "forward": "REJECT", "masq": 1, "mtu_fix": 1, "network": ["wan"]}
+]) %}
+{% for zone in zones %}
+config zone
+    option name '{{ zone.name }}'
+    option input '{{ zone.input }}'
+    option output '{{ zone.output }}'
+    option forward '{{ zone.forward }}'
+{% if zone.masq is defined %}
+    option masq '{{ zone.masq }}'
+{% endif %}
+{% if zone.mtu_fix is defined %}
+    option mtu_fix '{{ zone.mtu_fix }}'
+{% endif %}
+{% if zone.network is defined %}
+    list network '{{ zone.network | join("'\n    list network '") }}'
+{% endif %}
+
+{% endfor %}
+{% set forwardings = fw.forwardings | default([
+  {"src": "lan", "dest": "wan"}
+]) %}
+{% for fwd in forwardings %}
+config forwarding
+    option src '{{ fwd.src }}'
+    option dest '{{ fwd.dest }}'
+
+{% endfor %}

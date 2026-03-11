@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "homelab-gitops-network"
+version = "0.1.0"
+description = "GitOps-style homelab network configuration system for OpenWrt routers"
+requires-python = ">=3.11"
+dependencies = [
+    "jinja2>=3.1.0",
+    "jsonschema>=4.17.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

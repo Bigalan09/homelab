@@ -1,0 +1,33 @@
+{% for radio_name, radio in wireless.radios.items() | sort %}
+config wifi-device '{{ radio_name }}'
+    option type '{{ radio.type }}'
+{% if radio.channel is defined %}
+    option channel '{{ radio.channel }}'
+{% endif %}
+{% if radio.country is defined %}
+    option country '{{ radio.country }}'
+{% endif %}
+{% if radio.band is defined %}
+    option band '{{ radio.band }}'
+{% endif %}
+{% if radio.htmode is defined %}
+    option htmode '{{ radio.htmode }}'
+{% endif %}
+
+{% endfor %}
+{% for iface_name, iface in wireless.interfaces.items() | sort %}
+config wifi-iface '{{ iface_name }}'
+    option device '{{ iface.device }}'
+    option mode '{{ iface.mode }}'
+    option ssid '{{ iface.ssid }}'
+{% if iface.encryption is defined %}
+    option encryption '{{ iface.encryption }}'
+{% endif %}
+{% if iface.key is defined %}
+    option key '{{ iface.key }}'
+{% endif %}
+{% if iface.disabled is defined %}
+    option disabled '{{ iface.disabled }}'
+{% endif %}
+
+{% endfor %}

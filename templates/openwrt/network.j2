@@ -1,0 +1,20 @@
+{% for iface_name, iface in network.items() | sort %}
+config interface '{{ iface_name }}'
+{% if iface.device is defined %}
+    option device '{{ iface.device }}'
+{% endif %}
+    option proto '{{ iface.proto }}'
+{% if iface.ipaddr is defined %}
+    option ipaddr '{{ iface.ipaddr }}'
+{% endif %}
+{% if iface.netmask is defined %}
+    option netmask '{{ iface.netmask }}'
+{% endif %}
+{% if iface.gateway is defined %}
+    option gateway '{{ iface.gateway }}'
+{% endif %}
+{% if iface.dns is defined %}
+    list dns '{{ iface.dns | join("' '") }}'
+{% endif %}
+
+{% endfor %}
