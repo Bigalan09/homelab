@@ -3,8 +3,10 @@
 
 Usage:
     python generator/generate.py list
-    python generator/generate.py generate <device-name|all>
+    python generator/generate.py validate <device-name|all>
+    python generator/generate.py generate <device-name|all> [--dry-run] [--output-dir DIR]
     python generator/generate.py deploy <device-name>
+    python generator/generate.py status
 """
 
 import argparse
@@ -36,7 +38,12 @@ BUILD_DIR = REPO_ROOT / "build"
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 
 
-def generate_device(device_name: str, inventory: dict) -> None:
+def generate_device(
+    device_name: str,
+    inventory: dict,
+    output_dir: Path | None = None,
+    dry_run: bool = False,
+) -> None:
     """Generate configs for a single device."""
     devices = inventory.get("devices", {})
     if device_name not in devices:
@@ -57,13 +64,55 @@ def generate_device(device_name: str, inventory: dict) -> None:
         logger.error("Schema validation failed for '%s': %s", device_name, exc.message)
         sys.exit(1)
 
-    output_dir = BUILD_DIR / device_name
-    logger.info("Rendering configs to %s", output_dir)
-    results = render_device(device_type, config, output_dir)
+    if dry_run:
+        logger.info(
+            "[dry-run] Would render configs for '%s' to %s",
+            device_name,
+            (output_dir or BUILD_DIR) / device_name,
+        )
+        for _, output_name in TEMPLATE_FILES.get(device_type, []):
+            logger.info("[dry-run]   %s", output_name)
+        return
+
+    dest = (output_dir or BUILD_DIR) / device_name
+    logger.info("Rendering configs to %s", dest)
+    results = render_device(device_type, config, dest)
 
     for name, path in sorted(results.items()):
         display = path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
         logger.info("  Generated: %s", display)
+
+
+def validate_device(device_name: str, inventory: dict) -> bool:
+    """Validate the config for a single device.  Returns True on success."""
+    devices = inventory.get("devices", {})
+    if device_name not in devices:
+        logger.error("Device '%s' not found in inventory.", device_name)
+        return False
+
+    device_meta = devices[device_name]
+    device_type = device_meta.get("type", "")
+
+    try:
+        config = load_device_config(device_name)
+    except FileNotFoundError as exc:
+        logger.error("%s", exc)
+        return False
+
+    try:
+        schema_name = get_device_schema(device_type)
+    except ValueError as exc:
+        logger.error("%s", exc)
+        return False
+
+    try:
+        validate(config, schema_name)
+    except jsonschema.ValidationError as exc:
+        logger.error("Schema validation failed for '%s': %s", device_name, exc.message)
+        return False
+
+    logger.info("Config for '%s' is valid.", device_name)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -71,19 +120,50 @@ def generate_device(device_name: str, inventory: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def cmd_list(_args: argparse.Namespace) -> None:
+def cmd_list(args: argparse.Namespace) -> None:
     """List all devices discovered from the devices/ directory."""
     devices = list_devices()
     if not devices:
         print("No devices found in devices/ directory.")
         return
-    print("Available devices:")
-    for device in devices:
-        print(f"  {device}")
+
+    inventory = load_inventory()
+    inv_devices = inventory.get("devices", {})
+
+    if args.long:
+        # Build row data in a single pass, then determine column widths
+        rows = []
+        for device in devices:
+            meta = inv_devices.get(device, {})
+            host = meta.get("host", "-")
+            dtype = meta.get("type", "-")
+            expected = [n for _, n in TEMPLATE_FILES.get(dtype, [])]
+            build_device_dir = BUILD_DIR / device
+            if expected and build_device_dir.exists() and all(
+                (build_device_dir / f).exists() for f in expected
+            ):
+                built = "yes"
+            else:
+                built = "no"
+            rows.append((device, host, dtype, built))
+
+        col_device = max(len("DEVICE"), *(len(r[0]) for r in rows))
+        col_host = max(len("HOST"), *(len(r[1]) for r in rows))
+        col_type = max(len("TYPE"), *(len(r[2]) for r in rows))
+
+        header = f"{'DEVICE':<{col_device}}  {'HOST':<{col_host}}  {'TYPE':<{col_type}}  BUILT"
+        print(header)
+        print("-" * len(header))
+        for device, host, dtype, built in rows:
+            print(f"{device:<{col_device}}  {host:<{col_host}}  {dtype:<{col_type}}  {built}")
+    else:
+        print("Available devices:")
+        for device in devices:
+            print(f"  {device}")
 
 
-def cmd_generate(args: argparse.Namespace) -> None:
-    """Generate configs for one or all devices."""
+def cmd_validate(args: argparse.Namespace) -> None:
+    """Validate device config(s) against their schemas without generating files."""
     target = args.device
     inventory = load_inventory()
 
@@ -92,10 +172,70 @@ def cmd_generate(args: argparse.Namespace) -> None:
         if not devices:
             logger.warning("No devices found in inventory.")
             return
+        failed = []
         for device_name in sorted(devices):
-            generate_device(device_name, inventory)
+            if not validate_device(device_name, inventory):
+                failed.append(device_name)
+        if failed:
+            logger.error("Validation failed for: %s", ", ".join(failed))
+            sys.exit(1)
     else:
-        generate_device(target, inventory)
+        if not validate_device(target, inventory):
+            sys.exit(1)
+
+
+def cmd_generate(args: argparse.Namespace) -> None:
+    """Generate configs for one or all devices."""
+    target = args.device
+    inventory = load_inventory()
+    output_dir = Path(args.output_dir) if args.output_dir else None
+    dry_run = args.dry_run
+
+    if target == "all":
+        devices = inventory.get("devices", {})
+        if not devices:
+            logger.warning("No devices found in inventory.")
+            return
+        for device_name in sorted(devices):
+            generate_device(device_name, inventory, output_dir=output_dir, dry_run=dry_run)
+    else:
+        generate_device(target, inventory, output_dir=output_dir, dry_run=dry_run)
+
+
+def cmd_status(_args: argparse.Namespace) -> None:
+    """Show the build status of generated configs for all devices."""
+    devices = list_devices()
+    if not devices:
+        print("No devices found in devices/ directory.")
+        return
+
+    inventory = load_inventory()
+    inv_devices = inventory.get("devices", {})
+
+    col_device = max(len("DEVICE"), *(len(d) for d in devices))
+    col_file = max(len("FILE"), 10)
+
+    header = f"{'DEVICE':<{col_device}}  {'FILE':<{col_file}}  STATUS"
+    print(header)
+    print("-" * len(header))
+
+    for device in devices:
+        meta = inv_devices.get(device, {})
+        device_type = meta.get("type", "")
+        expected = [n for _, n in TEMPLATE_FILES.get(device_type, [])]
+        build_device_dir = BUILD_DIR / device
+
+        if not expected:
+            print(f"{device:<{col_device}}  {'(unknown type)':<{col_file}}  -")
+            continue
+
+        for fname in expected:
+            fpath = build_device_dir / fname
+            if fpath.exists():
+                status = "OK"
+            else:
+                status = "MISSING"
+            print(f"{device:<{col_device}}  {fname:<{col_file}}  {status}")
 
 
 def cmd_deploy(args: argparse.Namespace) -> None:
@@ -153,14 +293,56 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="generate.py",
         description="Homelab network config generator.",
+        epilog=(
+            "Examples:\n"
+            "  %(prog)s list -l                       # list devices with details\n"
+            "  %(prog)s validate flint2               # validate a device config\n"
+            "  %(prog)s validate all                  # validate all device configs\n"
+            "  %(prog)s generate flint2               # render configs for flint2\n"
+            "  %(prog)s generate all --dry-run        # preview what would be generated\n"
+            "  %(prog)s generate flint2 --output-dir /tmp/out\n"
+            "  %(prog)s status                        # show build status\n"
+            "  %(prog)s deploy flint2                 # deploy to device"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+
+    # Global verbosity flags
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable debug-level logging",
+    )
+    verbosity.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        help="Show only error messages",
+    )
+
     subparsers = parser.add_subparsers(dest="command", metavar="<command>")
     subparsers.required = True
 
     # list
-    subparsers.add_parser(
+    list_parser = subparsers.add_parser(
         "list",
         help="List available devices discovered from devices/ directory",
+    )
+    list_parser.add_argument(
+        "-l", "--long",
+        action="store_true",
+        help="Show host, type, and build status for each device",
+    )
+
+    # validate
+    val_parser = subparsers.add_parser(
+        "validate",
+        help="Validate device config(s) against their schemas without generating files",
+    )
+    val_parser.add_argument(
+        "device",
+        metavar="<device-name|all>",
+        help="Device name (must be present in inventory) or 'all'",
     )
 
     # generate
@@ -172,6 +354,22 @@ def build_parser() -> argparse.ArgumentParser:
         "device",
         metavar="<device-name|all>",
         help="Device name (must be present in inventory) or 'all'",
+    )
+    gen_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate and show what would be generated without writing any files",
+    )
+    gen_parser.add_argument(
+        "--output-dir",
+        metavar="DIR",
+        help="Write generated files to DIR/<device> instead of the default build/ directory",
+    )
+
+    # status
+    subparsers.add_parser(
+        "status",
+        help="Show per-device build status (which config files have been generated)",
     )
 
     # deploy
@@ -193,10 +391,21 @@ def main(args: list[str]) -> None:
     parser = build_parser()
     parsed = parser.parse_args(args)
 
+    # Apply global verbosity flags
+    root_logger = logging.getLogger()
+    if parsed.verbose:
+        root_logger.setLevel(logging.DEBUG)
+    elif parsed.quiet:
+        root_logger.setLevel(logging.ERROR)
+
     if parsed.command == "list":
         cmd_list(parsed)
+    elif parsed.command == "validate":
+        cmd_validate(parsed)
     elif parsed.command == "generate":
         cmd_generate(parsed)
+    elif parsed.command == "status":
+        cmd_status(parsed)
     elif parsed.command == "deploy":
         cmd_deploy(parsed)
 
