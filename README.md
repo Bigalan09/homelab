@@ -6,6 +6,18 @@ Network config lives in YAML, gets validated, rendered into OpenWrt UCI config f
 
 ---
 
+## Documentation
+
+Full documentation for this project lives in the companion repository [homelab-docs](https://github.com/Bigalan09/homelab-docs), included here as a git submodule at `docs/`.
+
+To initialise the submodule after cloning:
+
+```bash
+git submodule update --init --recursive
+```
+
+---
+
 ## Architecture
 
 ```
@@ -72,6 +84,8 @@ homelab-gitops-network/
 │
 ├── build/                  ← generated configs (git-ignored)
 ├── backups/                ← local backups (git-ignored)
+│
+├── docs/                   ← homelab-docs submodule (https://github.com/Bigalan09/homelab-docs)
 │
 ├── tests/
 │   └── test_rendering.py   ← pytest test suite
