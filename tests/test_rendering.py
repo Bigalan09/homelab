@@ -30,22 +30,22 @@ def test_load_inventory():
     """Inventory loads and contains expected keys."""
     inv = load_inventory()
     assert "devices" in inv
-    assert "router1" in inv["devices"]
+    assert "flint2" in inv["devices"]
 
 
-def test_inventory_router1_fields():
-    """router1 inventory entry has required fields."""
+def test_inventory_flint2_fields():
+    """flint2 inventory entry has required fields."""
     inv = load_inventory()
-    device = inv["devices"]["router1"]
+    device = inv["devices"]["flint2"]
     assert device["type"] == "openwrt-router"
-    assert "host" in device
-    assert "ssh_user" in device
+    assert device["host"] == "10.10.99.1"
+    assert device["ssh_user"] == "root"
 
 
 def test_load_device_config():
     """Device YAML loads correctly."""
-    config = load_device_config("router1")
-    assert config["hostname"] == "router1"
+    config = load_device_config("flint2")
+    assert config["hostname"] == "mgmt-router-01"
     assert "network" in config
     assert "wireless" in config
     assert "dhcp" in config
@@ -68,9 +68,9 @@ def test_schema_mapping_unknown():
         get_device_schema("unknown-device-type")
 
 
-def test_validate_router1():
-    """router1 YAML is valid against the router schema."""
-    config = load_device_config("router1")
+def test_validate_flint2():
+    """flint2 YAML is valid against the router schema."""
+    config = load_device_config("flint2")
     # Should not raise
     validate(config, "router.schema.json")
 
@@ -90,58 +90,58 @@ def test_validate_missing_required():
 
 def test_render_network_template():
     """Network template renders expected UCI syntax."""
-    config = load_device_config("router1")
+    config = load_device_config("flint2")
     output = render_template("network.j2", config, TEMPLATES_DIR)
 
-    assert "config interface 'lan'" in output
+    assert "config interface 'management'" in output
     assert "config interface 'wan'" in output
     assert "option proto 'static'" in output
-    assert "option ipaddr '192.168.10.1'" in output
+    assert "option ipaddr '10.10.99.1'" in output
     assert "option proto 'dhcp'" in output
 
 
 def test_render_wireless_template():
     """Wireless template renders expected UCI syntax."""
-    config = load_device_config("router1")
+    config = load_device_config("flint2")
     output = render_template("wireless.j2", config, TEMPLATES_DIR)
 
     assert "config wifi-device 'radio0'" in output
-    assert "config wifi-iface 'wifi0'" in output
-    assert "option ssid 'HomelabWiFi'" in output
+    assert "config wifi-iface 'wifi_mgmt_2g'" in output
+    assert "option ssid 'Meerkat Manor Admin'" in output
     assert "option encryption 'psk2'" in output
     assert "option mode 'ap'" in output
 
 
 def test_render_dhcp_template():
     """DHCP template renders expected UCI syntax."""
-    config = load_device_config("router1")
+    config = load_device_config("flint2")
     output = render_template("dhcp.j2", config, TEMPLATES_DIR)
 
     assert "config dhcp 'lan'" in output
-    assert "option start '100'" in output
+    assert "option start '50'" in output
     assert "option limit '150'" in output
     assert "option leasetime '12h'" in output
 
 
 def test_render_firewall_template():
     """Firewall template renders expected UCI syntax."""
-    config = load_device_config("router1")
+    config = load_device_config("flint2")
     output = render_template("firewall.j2", config, TEMPLATES_DIR)
 
     assert "config defaults" in output
     assert "config zone" in output
     assert "config forwarding" in output
-    assert "option name 'lan'" in output
+    assert "option name 'management'" in output
     assert "option name 'wan'" in output
 
 
 def test_render_system_template():
     """System template renders expected UCI syntax."""
-    config = load_device_config("router1")
+    config = load_device_config("flint2")
     output = render_template("system.j2", config, TEMPLATES_DIR)
 
     assert "config system" in output
-    assert "option hostname 'router1'" in output
+    assert "option hostname 'mgmt-router-01'" in output
     assert "option timezone 'UTC'" in output
 
 
@@ -152,7 +152,7 @@ def test_render_system_template():
 
 def test_render_device_creates_files(tmp_path):
     """render_device writes all expected output files."""
-    config = load_device_config("router1")
+    config = load_device_config("flint2")
     results = render_device("openwrt-router", config, tmp_path)
 
     expected = {"network", "wireless", "dhcp", "firewall", "system"}
@@ -164,20 +164,20 @@ def test_render_device_creates_files(tmp_path):
 
 def test_render_device_network_content(tmp_path):
     """Generated network config contains expected UCI blocks."""
-    config = load_device_config("router1")
+    config = load_device_config("flint2")
     render_device("openwrt-router", config, tmp_path)
 
     network_file = tmp_path / "network"
     content = network_file.read_text(encoding="utf-8")
 
-    assert "config interface 'lan'" in content
+    assert "config interface 'management'" in content
     assert "config interface 'wan'" in content
-    assert "option ipaddr '192.168.10.1'" in content
+    assert "option ipaddr '10.10.99.1'" in content
 
 
 def test_render_device_deterministic(tmp_path):
     """Config generation is deterministic across two runs."""
-    config = load_device_config("router1")
+    config = load_device_config("flint2")
 
     out1 = tmp_path / "run1"
     out2 = tmp_path / "run2"
