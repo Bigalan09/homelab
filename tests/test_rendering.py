@@ -195,3 +195,110 @@ def test_render_device_unknown_type(tmp_path):
     """render_device raises ValueError for unknown device types."""
     with pytest.raises(ValueError):
         render_device("unknown-device-type", {}, tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Device discovery tests
+# ---------------------------------------------------------------------------
+
+
+def test_list_devices_returns_flint2():
+    """list_devices() discovers flint2 from devices/ directory."""
+    from loader import list_devices  # noqa: E402
+
+    devices = list_devices()
+    assert "flint2" in devices
+
+
+def test_list_devices_sorted():
+    """list_devices() returns a sorted list."""
+    from loader import list_devices  # noqa: E402
+
+    devices = list_devices()
+    assert devices == sorted(devices)
+
+
+def test_list_devices_uses_filename_stem():
+    """Every entry in list_devices() corresponds to an existing .yaml file."""
+    from loader import DEVICES_DIR, list_devices  # noqa: E402
+
+    devices = list_devices()
+    for name in devices:
+        assert (DEVICES_DIR / f"{name}.yaml").exists(), (
+            f"devices/{name}.yaml not found"
+        )
+
+
+# ---------------------------------------------------------------------------
+# CLI subcommand tests
+# ---------------------------------------------------------------------------
+
+
+def test_cli_list(capsys):
+    """'list' subcommand prints available devices."""
+    from generate import main  # noqa: E402
+
+    main(["list"])
+    captured = capsys.readouterr()
+    assert "flint2" in captured.out
+    assert "Available devices:" in captured.out
+
+
+def test_cli_generate(tmp_path, monkeypatch):
+    """'generate' subcommand renders configs into the build directory."""
+    import generate  # noqa: E402
+
+    monkeypatch.setattr(generate, "BUILD_DIR", tmp_path)
+    main_fn = generate.main
+    main_fn(["generate", "flint2"])
+
+    out_dir = tmp_path / "flint2"
+    assert out_dir.exists()
+    for fname in ("network", "wireless", "dhcp", "firewall", "system"):
+        assert (out_dir / fname).exists(), f"Missing: {fname}"
+
+
+def test_cli_deploy_missing_build(tmp_path, monkeypatch):
+    """'deploy' subcommand exits with error when build files are absent."""
+    import generate  # noqa: E402
+
+    monkeypatch.setattr(generate, "BUILD_DIR", tmp_path)
+    with pytest.raises(SystemExit) as exc_info:
+        generate.main(["deploy", "flint2"])
+    assert exc_info.value.code != 0
+
+
+def test_cli_deploy_preflight_passes(tmp_path, monkeypatch):
+    """'deploy' pre-flight check passes when all build files are present."""
+    import generate  # noqa: E402
+    import subprocess  # noqa: E402
+
+    monkeypatch.setattr(generate, "BUILD_DIR", tmp_path)
+
+    # First generate so build files exist
+    generate.main(["generate", "flint2"])
+
+    # Patch subprocess.run to capture the deploy call without SSH
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(SystemExit) as exc_info:
+        generate.main(["deploy", "flint2"])
+
+    assert exc_info.value.code == 0
+    assert len(calls) == 1
+    assert "deploy.sh" in calls[0][-2]
+    assert calls[0][-1] == "flint2"
+
+
+def test_cli_no_args(capsys):
+    """Calling generate.py with no arguments prints usage and exits."""
+    from generate import build_parser  # noqa: E402
+
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args([])

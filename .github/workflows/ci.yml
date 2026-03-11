@@ -27,7 +27,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Validate YAML and generate configs
-        run: PYTHONPATH=generator python generator/generate.py flint2
+        run: PYTHONPATH=generator python generator/generate.py generate flint2
 
       - name: Run tests
         run: PYTHONPATH=generator pytest tests/ -v

@@ -12,7 +12,7 @@ Network config lives in YAML, gets validated, rendered into OpenWrt UCI config f
 Git Repository
       │
       ▼
-YAML network definition   (devices/router1.yaml)
+YAML network definition   (devices/<device-name>.yaml)
       │
       ▼
 Python generator          (generator/generate.py)
@@ -20,7 +20,7 @@ Python generator          (generator/generate.py)
       │  • validates YAML against JSON Schema
       │  • renders Jinja2 templates
       ▼
-Rendered OpenWrt configs  (build/router1/network, wireless, dhcp, ...)
+Rendered OpenWrt configs  (build/<device-name>/network, wireless, dhcp, ...)
       │
       ▼
 SSH deploy script         (scripts/deploy.sh)
@@ -47,7 +47,7 @@ homelab-gitops-network/
 │   └── devices.yaml        ← device inventory (hosts, types, SSH users)
 │
 ├── devices/
-│   └── router1.yaml        ← per-device YAML configuration (single source of truth)
+│   └── flint2.yaml         ← per-device YAML configuration (single source of truth)
 │
 ├── schemas/
 │   └── router.schema.json  ← JSON Schema for router YAML validation
@@ -61,8 +61,8 @@ homelab-gitops-network/
 │       └── system.j2       ← /etc/config/system
 │
 ├── generator/
-│   ├── generate.py         ← CLI entrypoint
-│   ├── loader.py           ← YAML loading + schema validation
+│   ├── generate.py         ← CLI entrypoint (list / generate / deploy)
+│   ├── loader.py           ← YAML loading + schema validation + device discovery
 │   └── renderer.py         ← Jinja2 template rendering
 │
 ├── scripts/
@@ -85,13 +85,15 @@ homelab-gitops-network/
 
 ## YAML Design
 
-All device configuration lives in `devices/<device-name>.yaml`. Example:
+All device configuration lives in `devices/<device-name>.yaml`.  The device
+name is taken directly from the filename stem — no additional registration is
+needed to discover it.  Example (`devices/flint2.yaml`):
 
 ```yaml
-hostname: router1
+hostname: flint2
 
 system:
-  hostname: router1
+  hostname: flint2
   timezone: UTC
 
 network:
@@ -131,14 +133,40 @@ Each network interface **must** include a `proto` field. Wireless interfaces **m
 
 ---
 
+## CLI Reference
+
+The generator exposes three subcommands:
+
+```bash
+# List all devices discovered from the devices/ directory
+python generator/generate.py list
+
+# Generate (validate + render) configs for one device
+python generator/generate.py generate <device-name>
+
+# Generate configs for every device in inventory
+python generator/generate.py generate all
+
+# Deploy configs to a device (build files must already exist)
+python generator/generate.py deploy <device-name>
+```
+
+The `deploy` subcommand performs a **pre-flight check**: it verifies that all
+expected config files are present in `build/<device-name>/` before attempting
+any SSH operations.  If files are missing it exits with an error and tells you
+to run `generate <device-name>` first.
+
+---
+
 ## GitOps Workflow
 
-1. **Edit** `devices/router1.yaml` to change your network configuration.
+1. **Edit** `devices/<device-name>.yaml` to change your network configuration.
 2. **Commit and push** to the repository.
 3. **CI** automatically validates the YAML and renders configs.
 4. **Deploy** manually (or automate via CD):
    ```bash
-   make deploy DEVICE=router1
+   make generate DEVICE=flint2
+   make deploy DEVICE=flint2
    ```
 
 ---
@@ -151,8 +179,11 @@ Requires Python 3.11+ and `make`.
 # Create virtualenv and install dependencies
 make setup
 
-# Generate configs for router1
-make generate DEVICE=router1
+# List all devices discovered in devices/
+make list
+
+# Generate configs for flint2
+make generate DEVICE=flint2
 
 # Generate configs for all devices
 make generate-all
@@ -171,10 +202,14 @@ make clean
 > Prerequisites: SSH key-based auth to your OpenWrt router.
 
 ```bash
-# Deploy configs to router1
-./scripts/deploy.sh router1
-# or via make
-make deploy DEVICE=router1
+# 1. Generate fresh configs
+make generate DEVICE=flint2
+
+# 2. Deploy to the router (pre-flight check runs automatically)
+make deploy DEVICE=flint2
+
+# or using the scripts directly
+./scripts/deploy.sh flint2
 ```
 
 The deploy script will:
@@ -192,7 +227,7 @@ The deploy script will:
 If something goes wrong after a deploy, roll back to the last backup:
 
 ```bash
-./scripts/rollback.sh router1
+./scripts/rollback.sh flint2
 ```
 
 This SSHes to the router, finds the most recent `/etc/config-backup-*` directory, copies it back over `/etc/config`, and reloads services.
@@ -204,8 +239,8 @@ This SSHes to the router, finds the most recent `/etc/config-backup-*` directory
 Download a copy of the router's live `/etc/config` directory:
 
 ```bash
-./scripts/backup.sh router1
-# Saved to: backups/router1/<timestamp>.tar.gz
+./scripts/backup.sh flint2
+# Saved to: backups/flint2/<timestamp>.tar.gz
 ```
 
 ---
@@ -214,21 +249,23 @@ Download a copy of the router's live `/etc/config` directory:
 
 ### New router
 
-1. Add an entry to `inventory/devices.yaml`:
+1. Create `devices/<device-name>.yaml` following the same structure as `flint2.yaml`.
+2. Add an entry to `inventory/devices.yaml`:
    ```yaml
    devices:
-     router2:
+     my-router:
        type: openwrt-router
        host: 192.168.1.2
        ssh_user: root
-       config_file: router2.yaml
    ```
-2. Create `devices/router2.yaml` following the same structure as `router1.yaml`.
 3. Generate and deploy:
    ```bash
-   make generate DEVICE=router2
-   make deploy DEVICE=router2
+   make generate DEVICE=my-router
+   make deploy DEVICE=my-router
    ```
+
+The device name is derived automatically from the YAML filename — you can
+verify it is detected with `make list`.
 
 ### Future device types (access points, managed switches)
 
@@ -248,7 +285,7 @@ GitHub Actions automatically runs on every push and pull request:
 
 1. Install Python 3.11
 2. Install dependencies (`pip install -r requirements.txt`)
-3. Validate YAML and generate configs (`python generator/generate.py router1`)
+3. Validate YAML and generate configs (`python generator/generate.py generate flint2`)
 4. Run tests (`pytest tests/ -v`)
 
 See `.github/workflows/ci.yml`.
