@@ -65,3 +65,13 @@ def get_device_schema(device_type: str) -> str:
     if device_type not in schema_map:
         raise ValueError(f"Unknown device type '{device_type}'. No schema available.")
     return schema_map[device_type]
+
+
+def list_devices() -> list[str]:
+    """Return device names discovered from YAML files in the devices directory.
+
+    The device name is the stem of each ``*.yaml`` file found, so a file named
+    ``devices/flint2.yaml`` yields the device name ``flint2``.  This means no
+    explicit registration in inventory is required to discover a device.
+    """
+    return sorted(p.stem for p in DEVICES_DIR.glob("*.yaml"))

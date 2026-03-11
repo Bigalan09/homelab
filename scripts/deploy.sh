@@ -29,7 +29,7 @@ DEVICE="$1"
 # ---------------------------------------------------------------------------
 echo "[deploy] Generating configs for ${DEVICE}..."
 cd "${REPO_ROOT}"
-python generator/generate.py "${DEVICE}"
+PYTHONPATH=generator python generator/generate.py generate "${DEVICE}"
 
 BUILD_DIR="${REPO_ROOT}/build/${DEVICE}"
 if [[ ! -d "${BUILD_DIR}" ]]; then
