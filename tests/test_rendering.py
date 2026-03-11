@@ -236,7 +236,7 @@ def test_list_devices_uses_filename_stem():
 
 def test_cli_list(capsys):
     """'list' subcommand prints available devices."""
-    from generate import main  # noqa: E402
+    from cli import main  # noqa: E402
 
     main(["list"])
     captured = capsys.readouterr()
@@ -246,11 +246,11 @@ def test_cli_list(capsys):
 
 def test_cli_generate(tmp_path, monkeypatch):
     """'generate' subcommand renders configs into the build directory."""
-    import generate  # noqa: E402
+    import core  # noqa: E402
+    from cli import main as cli_main  # noqa: E402
 
-    monkeypatch.setattr(generate, "BUILD_DIR", tmp_path)
-    main_fn = generate.main
-    main_fn(["generate", "flint2"])
+    monkeypatch.setattr(core, "BUILD_DIR", tmp_path)
+    cli_main(["generate", "flint2"])
 
     out_dir = tmp_path / "flint2"
     assert out_dir.exists()
@@ -260,23 +260,25 @@ def test_cli_generate(tmp_path, monkeypatch):
 
 def test_cli_deploy_missing_build(tmp_path, monkeypatch):
     """'deploy' subcommand exits with error when build files are absent."""
-    import generate  # noqa: E402
+    import core  # noqa: E402
+    import cli  # noqa: E402
 
-    monkeypatch.setattr(generate, "BUILD_DIR", tmp_path)
+    monkeypatch.setattr(core, "BUILD_DIR", tmp_path)
     with pytest.raises(SystemExit) as exc_info:
-        generate.main(["deploy", "flint2"])
+        cli.main(["deploy", "flint2"])
     assert exc_info.value.code != 0
 
 
 def test_cli_deploy_preflight_passes(tmp_path, monkeypatch):
     """'deploy' pre-flight check passes when all build files are present."""
-    import generate  # noqa: E402
+    import core  # noqa: E402
+    import cli  # noqa: E402
     import subprocess  # noqa: E402
 
-    monkeypatch.setattr(generate, "BUILD_DIR", tmp_path)
+    monkeypatch.setattr(core, "BUILD_DIR", tmp_path)
 
     # First generate so build files exist
-    generate.main(["generate", "flint2"])
+    cli.main(["generate", "flint2"])
 
     # Patch subprocess.run to capture the deploy call without SSH
     calls = []
@@ -287,7 +289,7 @@ def test_cli_deploy_preflight_passes(tmp_path, monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(SystemExit) as exc_info:
-        generate.main(["deploy", "flint2"])
+        cli.main(["deploy", "flint2"])
 
     assert exc_info.value.code == 0
     assert len(calls) == 1
@@ -296,9 +298,132 @@ def test_cli_deploy_preflight_passes(tmp_path, monkeypatch):
 
 
 def test_cli_no_args(capsys):
-    """Calling generate.py with no arguments prints usage and exits."""
-    from generate import build_parser  # noqa: E402
+    """Calling the CLI with no arguments prints usage and exits."""
+    from cli import build_parser  # noqa: E402
 
     parser = build_parser()
     with pytest.raises(SystemExit):
         parser.parse_args([])
+
+
+def test_cli_list_long(capsys):
+    """'list -l' shows host, type, and build status columns."""
+    from cli import main  # noqa: E402
+
+    main(["list", "-l"])
+    captured = capsys.readouterr()
+    assert "flint2" in captured.out
+    assert "HOST" in captured.out
+    assert "TYPE" in captured.out
+    assert "BUILT" in captured.out
+    assert "10.10.99.1" in captured.out
+    assert "openwrt-router" in captured.out
+
+
+def test_cli_list_long_built(tmp_path, monkeypatch, capsys):
+    """'list -l' reports BUILT=yes when all config files are present."""
+    import core  # noqa: E402
+    from cli import main as cli_main  # noqa: E402
+
+    monkeypatch.setattr(core, "BUILD_DIR", tmp_path)
+    cli_main(["generate", "flint2"])
+
+    cli_main(["list", "-l"])
+    captured = capsys.readouterr()
+    assert "yes" in captured.out
+
+
+def test_cli_validate_valid(capsys):
+    """'validate' succeeds for a valid device config."""
+    from cli import main  # noqa: E402
+
+    main(["validate", "flint2"])
+    # validate uses the logger (stderr), but the success message is emitted via logging
+    # just confirm no SystemExit was raised (function returns normally)
+
+
+def test_cli_validate_all(capsys):
+    """'validate all' succeeds when all devices are valid."""
+    from cli import main  # noqa: E402
+
+    main(["validate", "all"])
+
+
+def test_cli_validate_unknown_device(tmp_path, monkeypatch):
+    """'validate' exits with non-zero for an unknown device."""
+    import cli  # noqa: E402
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["validate", "nonexistent_device_xyz"])
+    assert exc_info.value.code != 0
+
+
+def test_cli_generate_dry_run(tmp_path, monkeypatch, capsys):
+    """'generate --dry-run' does not create any files."""
+    import core  # noqa: E402
+    from cli import main as cli_main  # noqa: E402
+
+    monkeypatch.setattr(core, "BUILD_DIR", tmp_path)
+    cli_main(["generate", "flint2", "--dry-run"])
+
+    # No files should have been written
+    assert not (tmp_path / "flint2").exists()
+
+
+def test_cli_generate_output_dir(tmp_path):
+    """'generate --output-dir' writes files to the given directory."""
+    from cli import main  # noqa: E402
+
+    main(["generate", "flint2", "--output-dir", str(tmp_path)])
+
+    out_dir = tmp_path / "flint2"
+    assert out_dir.exists()
+    for fname in ("network", "wireless", "dhcp", "firewall", "system"):
+        assert (out_dir / fname).exists(), f"Missing: {fname}"
+
+
+def test_cli_status_missing(tmp_path, monkeypatch, capsys):
+    """'status' shows MISSING when build files do not exist."""
+    import core  # noqa: E402
+    from cli import main as cli_main  # noqa: E402
+
+    monkeypatch.setattr(core, "BUILD_DIR", tmp_path)
+    cli_main(["status"])
+    captured = capsys.readouterr()
+    assert "MISSING" in captured.out
+    assert "flint2" in captured.out
+
+
+def test_cli_status_ok(tmp_path, monkeypatch, capsys):
+    """'status' shows OK when all build files are present."""
+    import core  # noqa: E402
+    from cli import main as cli_main  # noqa: E402
+
+    monkeypatch.setattr(core, "BUILD_DIR", tmp_path)
+    cli_main(["generate", "flint2"])
+
+    cli_main(["status"])
+    captured = capsys.readouterr()
+    assert "OK" in captured.out
+    assert "flint2" in captured.out
+
+
+def test_cli_verbose_flag(capsys):
+    """'-v' flag enables debug-level log messages."""
+    import logging  # noqa: E402
+
+    from cli import main  # noqa: E402
+
+    main(["-v", "list"])
+    # After main(), root logger level was set to DEBUG
+    assert logging.getLogger().level == logging.DEBUG
+
+
+def test_cli_quiet_flag(capsys):
+    """'-q' flag raises log level to ERROR only."""
+    import logging  # noqa: E402
+
+    from cli import main  # noqa: E402
+
+    main(["-q", "list"])
+    assert logging.getLogger().level == logging.ERROR
