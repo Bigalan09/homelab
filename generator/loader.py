@@ -12,9 +12,8 @@ logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).parent.parent
 SCHEMAS_DIR = REPO_ROOT / "schemas"
-DOCS_DIR = REPO_ROOT / "docs"
-INVENTORY_FILE = DOCS_DIR / "inventory" / "devices.yaml"
-DEVICES_DIR = DOCS_DIR / "devices"
+INVENTORY_FILE = REPO_ROOT / "inventory" / "devices.yaml"
+DEVICES_DIR = REPO_ROOT / "devices"
 
 
 def load_yaml(path: Path) -> dict[str, Any]:

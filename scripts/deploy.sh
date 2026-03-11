@@ -40,7 +40,7 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Read host/user from inventory
 # ---------------------------------------------------------------------------
-INVENTORY="${REPO_ROOT}/docs/inventory/devices.yaml"
+INVENTORY="${REPO_ROOT}/inventory/devices.yaml"
 HOST=$(python3 -c "
 import yaml, sys
 with open('${INVENTORY}') as f:

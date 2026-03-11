@@ -6,13 +6,24 @@ Network config lives in YAML, gets validated, rendered into OpenWrt UCI config f
 
 ---
 
+## Documentation
+
+Full homelab documentation lives in the companion repository [homelab-docs](https://github.com/Bigalan09/homelab-docs), included here as a git submodule at `docs/`.
+
+```bash
+# after cloning, initialise the submodule
+git submodule update --init --recursive
+```
+
+---
+
 ## Architecture
 
 ```
 Git Repository
       │
       ▼
-YAML network definition   (docs/devices/<device-name>.yaml)
+YAML network definition   (devices/<device-name>.yaml)
       │
       ▼
 Python generator          (generator/generate.py)
@@ -43,11 +54,11 @@ homelab-gitops-network/
 ├── requirements.txt        ← Python dependencies
 ├── Makefile                ← developer workflow shortcuts
 │
-├── docs/
-│   ├── devices/
-│   │   └── flint2.yaml         ← per-device YAML configuration (single source of truth)
-│   └── inventory/
-│       └── devices.yaml        ← device inventory (hosts, types, SSH users)
+├── inventory/
+│   └── devices.yaml        ← device inventory (hosts, types, SSH users)
+│
+├── devices/
+│   └── flint2.yaml         ← per-device YAML configuration (single source of truth)
 │
 ├── schemas/
 │   └── router.schema.json  ← JSON Schema for router YAML validation
@@ -73,11 +84,7 @@ homelab-gitops-network/
 ├── build/                  ← generated configs (git-ignored)
 ├── backups/                ← local backups (git-ignored)
 │
-├── docs/                   ← device YAML configs and inventory (single source of truth)
-│   ├── devices/
-│   │   └── flint2.yaml
-│   └── inventory/
-│       └── devices.yaml
+├── docs/                   ← homelab-docs submodule (https://github.com/Bigalan09/homelab-docs)
 │
 ├── tests/
 │   └── test_rendering.py   ← pytest test suite
@@ -91,9 +98,9 @@ homelab-gitops-network/
 
 ## YAML Design
 
-All device configuration lives in `docs/devices/<device-name>.yaml`.  The device
+All device configuration lives in `devices/<device-name>.yaml`.  The device
 name is taken directly from the filename stem — no additional registration is
-needed to discover it.  Example (`docs/devices/flint2.yaml`):
+needed to discover it.  Example (`devices/flint2.yaml`):
 
 ```yaml
 hostname: flint2
@@ -144,13 +151,13 @@ Each network interface **must** include a `proto` field. Wireless interfaces **m
 The generator exposes three subcommands:
 
 ```bash
-# List all devices discovered from the docs/devices/ directory
+# List all devices discovered from the devices/ directory
 python generator/generate.py list
 
 # Generate (validate + render) configs for one device
 python generator/generate.py generate <device-name>
 
-# Generate configs for every device in docs/inventory
+# Generate configs for every device in inventory
 python generator/generate.py generate all
 
 # Deploy configs to a device (build files must already exist)
@@ -166,7 +173,7 @@ to run `generate <device-name>` first.
 
 ## GitOps Workflow
 
-1. **Edit** `docs/devices/<device-name>.yaml` to change your network configuration.
+1. **Edit** `devices/<device-name>.yaml` to change your network configuration.
 2. **Commit and push** to the repository.
 3. **CI** automatically validates the YAML and renders configs.
 4. **Deploy** manually (or automate via CD):
@@ -185,7 +192,7 @@ Requires Python 3.11+ and `make`.
 # Create virtualenv and install dependencies
 make setup
 
-# List all devices discovered in docs/devices/
+# List all devices discovered in devices/
 make list
 
 # Generate configs for flint2
@@ -220,7 +227,7 @@ make deploy DEVICE=flint2
 
 The deploy script will:
 1. Generate fresh configs from YAML
-2. Read the target host from `docs/inventory/devices.yaml`
+2. Read the target host from `inventory/devices.yaml`
 3. Copy generated files to `/tmp/gitops-config` on the router
 4. Backup existing `/etc/config` to `/etc/config-backup-YYYYMMDD-HHMMSS`
 5. Replace the configs
@@ -255,8 +262,8 @@ Download a copy of the router's live `/etc/config` directory:
 
 ### New router
 
-1. Create `docs/devices/<device-name>.yaml` following the same structure as `flint2.yaml`.
-2. Add an entry to `docs/inventory/devices.yaml`:
+1. Create `devices/<device-name>.yaml` following the same structure as `flint2.yaml`.
+2. Add an entry to `inventory/devices.yaml`:
    ```yaml
    devices:
      my-router:
@@ -277,11 +284,11 @@ verify it is detected with `make list`.
 
 The architecture is structured to support additional device types:
 
-- Add a new device YAML in `docs/devices/` (e.g. `ap1.yaml`, `switch1.yaml`)
+- Add a new device YAML in `devices/` (e.g. `ap1.yaml`, `switch1.yaml`)
 - Add a corresponding schema in `schemas/` (e.g. `ap.schema.json`)
 - Add a template directory (e.g. `templates/openwrt-ap/`, `templates/switch/`)
 - Register the new type in `generator/loader.py` (`get_device_schema`) and `generator/renderer.py` (`TEMPLATE_DIRS`, `TEMPLATE_FILES`)
-- Add the device to `docs/inventory/devices.yaml`
+- Add the device to `inventory/devices.yaml`
 
 ---
 

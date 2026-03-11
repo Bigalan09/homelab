@@ -22,7 +22,7 @@ usage() {
 [[ $# -eq 1 ]] || usage
 DEVICE="$1"
 
-INVENTORY="${REPO_ROOT}/docs/inventory/devices.yaml"
+INVENTORY="${REPO_ROOT}/inventory/devices.yaml"
 HOST=$(python3 -c "
 import yaml, sys
 with open('${INVENTORY}') as f:
